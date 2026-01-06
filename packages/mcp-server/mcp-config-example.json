@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "code-agent-insights": {
+      "command": "node",
+      "args": [
+        "/path/to/code-agent-insights/packages/mcp-server/dist/index.js"
+      ],
+      "env": {}
+    }
+  }
+}

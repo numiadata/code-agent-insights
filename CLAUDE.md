@@ -369,11 +369,36 @@ ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 
 ## Current Phase
 
-**Phase 1**: Core + CLI with search, stats, and feature tracking
+**Phase 2**: MCP server for in-session recall/remember (IN PROGRESS)
+
+### Phase 1 - Completed ✓
+- ✅ Core TypeScript library with SQLite storage
+- ✅ CLI with 7 commands (index, search, stats, learn, recommend, clean, review)
+- ✅ Robust JSONL/JSON parser with edge case handling
+- ✅ Full-text search with FTS5
+- ✅ Interactive learning review
+- ✅ Database cleanup tools
+- ✅ Mode effectiveness tracking
+- ✅ Date-based session filtering (--since flag)
+
+### Phase 2 - In Progress 🚧
+**Completed:**
+- ✅ MCP server package setup with @modelcontextprotocol/sdk
+- ✅ Server core with tool registration and routing
+- ✅ 4 tool schemas defined: recall, remember, similar_errors, file_history
+- ✅ Database methods: searchErrors(), getSessionsForFile(), getLearningsForSession()
+- ✅ MCP server documentation and configuration examples
+
+**Next Steps:**
+- [ ] Implement recall tool (search learnings and sessions)
+- [ ] Implement remember tool (save learnings during session)
+- [ ] Implement similar_errors tool (find past error resolutions)
+- [ ] Implement file_history tool (get file session history)
+- [ ] Test MCP server with Claude Code
+- [ ] Add example MCP configuration to docs
 
 ## Future Phases
 
-- **Phase 2**: MCP server for in-session recall/remember
 - **Phase 3**: Git commit correlation
 - **Phase 4**: CI/CD outcome tracking
 - **Phase 5**: Team sync and manager dashboards

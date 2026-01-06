@@ -515,6 +515,54 @@ export class InsightsDatabase {
     return rows.map(row => this.rowToErrorRecord(row));
   }
 
+  searchErrors(query: string, options: { errorType?: string; limit?: number } = {}): ErrorRecord[] {
+    const limit = options.limit || 10;
+    let sql = `
+      SELECT e.*, s.project_name, s.started_at as session_date
+      FROM errors e
+      JOIN sessions s ON e.session_id = s.id
+      WHERE e.error_message LIKE ?
+    `;
+    const params: any[] = [`%${query}%`];
+
+    if (options.errorType) {
+      sql += ' AND e.error_type = ?';
+      params.push(options.errorType);
+    }
+
+    sql += ' ORDER BY e.timestamp DESC LIMIT ?';
+    params.push(limit);
+
+    return this.db.prepare(sql).all(...params).map(row => this.rowToErrorRecord(row));
+  }
+
+  getSessionsForFile(
+    filePath: string,
+    limit: number = 5
+  ): Array<{ session: Session; operations: string[] }> {
+    const fileName = path.basename(filePath);
+
+    const sql = `
+      SELECT
+        s.*,
+        GROUP_CONCAT(DISTINCT e.type) as operations
+      FROM sessions s
+      JOIN events e ON e.session_id = s.id
+      WHERE e.type IN ('file_read', 'file_write', 'file_create')
+        AND (e.content LIKE ? OR e.content LIKE ?)
+      GROUP BY s.id
+      ORDER BY s.started_at DESC
+      LIMIT ?
+    `;
+
+    const rows = this.db.prepare(sql).all(`%${filePath}%`, `%${fileName}%`, limit);
+
+    return rows.map((row: any) => ({
+      session: this.rowToSession(row),
+      operations: (row.operations || '').split(','),
+    }));
+  }
+
   // ============================================================================
   // Learning methods
   // ============================================================================
@@ -834,6 +882,11 @@ export class InsightsDatabase {
       WHERE learning_id = ?
     `);
     ftsStmt.run(content, id);
+  }
+
+  getLearningsForSession(sessionId: string): Learning[] {
+    const sql = 'SELECT * FROM learnings WHERE session_id = ?';
+    return this.db.prepare(sql).all(sessionId).map(row => this.rowToLearning(row));
   }
 
   // ============================================================================
