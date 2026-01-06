@@ -14,10 +14,29 @@ export async function similarErrorsTool(
     limit?: number;
   }
 ): Promise<string> {
+  // Validate input
+  if (!args.error_message || typeof args.error_message !== 'string') {
+    return '⚠️ Error: error_message parameter is required and must be a string';
+  }
+
+  const errorMsg = args.error_message.trim();
+  if (errorMsg.length === 0) {
+    return '⚠️ Error: error_message cannot be empty';
+  }
+
+  if (errorMsg.length > 1000) {
+    return '⚠️ Error: error_message too long (max 1000 characters)';
+  }
+
   const limit = args.limit || 5;
 
+  // Validate limit
+  if (limit < 1 || limit > 50) {
+    return '⚠️ Error: Limit must be between 1 and 50';
+  }
+
   // Search for similar errors
-  const errors = db.searchErrors(args.error_message, {
+  const errors = db.searchErrors(errorMsg, {
     errorType: args.error_type,
     limit,
   });

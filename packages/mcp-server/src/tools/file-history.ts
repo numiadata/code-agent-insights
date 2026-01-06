@@ -13,17 +13,44 @@ export async function fileHistoryTool(
     limit?: number;
   }
 ): Promise<string> {
+  // Validate input
+  if (!args.file_path || typeof args.file_path !== 'string') {
+    return '⚠️ Error: file_path parameter is required and must be a string';
+  }
+
+  const filePath = args.file_path.trim();
+  if (filePath.length === 0) {
+    return '⚠️ Error: file_path cannot be empty';
+  }
+
+  if (filePath.length > 500) {
+    return '⚠️ Error: file_path too long (max 500 characters)';
+  }
+
   const limit = args.limit || 5;
 
-  // Get sessions that touched this file
-  const results = db.getSessionsForFile(args.file_path, limit);
+  // Validate limit
+  if (limit < 1 || limit > 50) {
+    return '⚠️ Error: Limit must be between 1 and 50';
+  }
 
+  // Try the primary method first
+  let results = db.getSessionsForFile(filePath, limit);
+
+  // If no results, try the simple fallback
   if (results.length === 0) {
-    return `No sessions found that touched file: "${args.file_path}"`;
+    results = db.getSessionsForFileSimple(filePath, limit);
+  }
+
+  // Get learnings related to this file
+  const relatedLearnings = db.searchLearnings(filePath, { limit: 5 });
+
+  if (results.length === 0 && relatedLearnings.length === 0) {
+    return `No past sessions or learnings found for "${filePath}".\n\nThis file may not have been worked on in indexed sessions, or the sessions haven't been indexed yet. Try running \`cai index\` to update.`;
   }
 
   // Format as markdown
-  let output = `# File History: \`${args.file_path}\`\n\n`;
+  let output = `# File History: \`${filePath}\`\n\n`;
   output += `Found ${results.length} session${results.length > 1 ? 's' : ''}\n\n`;
 
   for (let i = 0; i < results.length; i++) {
@@ -92,19 +119,23 @@ export async function fileHistoryTool(
     output += '\n---\n\n';
   }
 
-  // Aggregate all learnings
-  const allLearnings = results.flatMap((r) => db.getLearningsForSession(r.session.id));
-  const uniqueLearnings = Array.from(
-    new Map(allLearnings.map((l) => [l.id, l])).values()
+  // Show related learnings (both from sessions and file-specific search)
+  const sessionLearnings = results.flatMap((r) => db.getLearningsForSession(r.session.id));
+  const allLearnings = Array.from(
+    new Map([...sessionLearnings, ...relatedLearnings].map((l) => [l.id, l])).values()
   );
 
-  if (uniqueLearnings.length > 0) {
-    output += `\n## All Learnings Related to This File (${uniqueLearnings.length})\n\n`;
-    for (const learning of uniqueLearnings.slice(0, 5)) {
-      output += `- [${learning.type}] ${learning.content}\n`;
+  if (allLearnings.length > 0) {
+    output += `\n## Related Learnings (${allLearnings.length})\n\n`;
+    for (const learning of allLearnings.slice(0, 5)) {
+      output += `- **[${learning.type}]** ${learning.content}`;
+      if (learning.tags && learning.tags.length > 0) {
+        output += ` _• Tags: ${learning.tags.join(', ')}_`;
+      }
+      output += '\n';
     }
-    if (uniqueLearnings.length > 5) {
-      output += `- _...and ${uniqueLearnings.length - 5} more (use \`recall\` to search)_\n`;
+    if (allLearnings.length > 5) {
+      output += `\n_...and ${allLearnings.length - 5} more. Use \`recall "${filePath}"\` to search all learnings._\n`;
     }
   }
 

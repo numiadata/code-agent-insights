@@ -90,6 +90,46 @@ export class InsightsDatabase {
     this.runMigrations();
   }
 
+  /**
+   * Sanitize a query string for FTS5 search.
+   * - Removes FTS operators that could cause syntax errors
+   * - Handles special characters
+   * - Returns null for empty or invalid queries
+   */
+  private sanitizeFTSQuery(query: string): string | null {
+    if (!query || query.trim().length === 0) {
+      return null;  // Signal to skip FTS search
+    }
+
+    let sanitized = query.trim();
+
+    // Remove or escape FTS5 special characters
+    // FTS5 operators: AND, OR, NOT, NEAR, *, ^, "
+
+    // Replace special characters with spaces
+    sanitized = sanitized
+      .replace(/[.*+?^${}()|[\]\\]/g, ' ')  // Regex special chars
+      .replace(/["']/g, ' ')                  // Quotes
+      .replace(/[-:]/g, ' ')                  // Common operators
+      .replace(/\s+/g, ' ')                   // Collapse whitespace
+      .trim();
+
+    // If query is now empty or too short, return null
+    if (sanitized.length < 2) {
+      return null;
+    }
+
+    // Split into words and join with implicit AND (space in FTS5)
+    const words = sanitized.split(' ').filter(w => w.length >= 2);
+
+    if (words.length === 0) {
+      return null;
+    }
+
+    // Use * suffix for prefix matching (more forgiving)
+    return words.map(w => `${w}*`).join(' ');
+  }
+
   private runMigrations(): void {
     // Check current schema version
     let currentVersion = 0;
@@ -400,6 +440,33 @@ export class InsightsDatabase {
     stmt.run(summary, outcome, id);
   }
 
+  /**
+   * Delete a session and all its related data.
+   * Note: Learnings are preserved to maintain extracted knowledge.
+   */
+  deleteSession(sessionId: string): void {
+    this.db.prepare('DELETE FROM events WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM tool_calls WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM errors WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM skill_invocations WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM sub_agent_invocations WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM tool_sequences WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM session_modes WHERE session_id = ?').run(sessionId);
+    // Don't delete learnings - keep extracted knowledge
+    this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+  }
+
+  /**
+   * Delete a session by its raw file path.
+   * Useful for reindexing sessions with improved parser.
+   */
+  deleteSessionByPath(rawPath: string): void {
+    const session = this.db.prepare('SELECT id FROM sessions WHERE raw_path = ?').get(rawPath) as any;
+    if (session) {
+      this.deleteSession(session.id);
+    }
+  }
+
   // ============================================================================
   // Event methods
   // ============================================================================
@@ -517,17 +584,21 @@ export class InsightsDatabase {
 
   searchErrors(query: string, options: { errorType?: string; limit?: number } = {}): ErrorRecord[] {
     const limit = options.limit || 10;
+
+    // Errors don't use FTS, just use LIKE with basic sanitization
+    const safeQuery = query.replace(/[%_]/g, '\\$&');  // Escape LIKE wildcards
+
     let sql = `
       SELECT e.*, s.project_name, s.started_at as session_date
       FROM errors e
       JOIN sessions s ON e.session_id = s.id
       WHERE e.error_message LIKE ?
     `;
-    const params: any[] = [`%${query}%`];
+    const params: any[] = [`%${safeQuery}%`];
 
     if (options.errorType) {
-      sql += ' AND e.error_type = ?';
-      params.push(options.errorType);
+      sql += ' AND e.error_type LIKE ?';
+      params.push(`%${options.errorType}%`);
     }
 
     sql += ' ORDER BY e.timestamp DESC LIMIT ?';
@@ -542,25 +613,90 @@ export class InsightsDatabase {
   ): Array<{ session: Session; operations: string[] }> {
     const fileName = path.basename(filePath);
 
+    // Search for both dedicated file events AND tool_call events with matching paths
     const sql = `
       SELECT
         s.*,
-        GROUP_CONCAT(DISTINCT e.type) as operations
+        GROUP_CONCAT(DISTINCT
+          CASE
+            WHEN e.type = 'file_read' THEN 'Read'
+            WHEN e.type = 'file_write' THEN 'Write'
+            WHEN e.type = 'file_create' THEN 'Create'
+            WHEN e.type = 'tool_call' AND e.content IN ('view', 'Read', 'read_file', 'Glob', 'Grep') THEN 'Read'
+            WHEN e.type = 'tool_call' AND e.content IN ('str_replace', 'Edit', 'edit_file') THEN 'Write'
+            WHEN e.type = 'tool_call' AND e.content IN ('create_file', 'Write') THEN 'Create'
+            ELSE e.type
+          END
+        ) as operations
       FROM sessions s
       JOIN events e ON e.session_id = s.id
-      WHERE e.type IN ('file_read', 'file_write', 'file_create')
-        AND (e.content LIKE ? OR e.content LIKE ?)
+      WHERE (
+        -- Match dedicated file events
+        (e.type IN ('file_read', 'file_write', 'file_create') AND (e.content LIKE ? OR e.content LIKE ?))
+        OR
+        -- Match tool_call events where metadata contains the file path
+        (e.type = 'tool_call' AND e.metadata LIKE ? AND e.metadata LIKE ?)
+      )
       GROUP BY s.id
       ORDER BY s.started_at DESC
       LIMIT ?
     `;
 
-    const rows = this.db.prepare(sql).all(`%${filePath}%`, `%${fileName}%`, limit);
+    const fullPathPattern = `%${filePath}%`;
+    const fileNamePattern = `%${fileName}%`;
 
-    return rows.map((row: any) => ({
-      session: this.rowToSession(row),
-      operations: (row.operations || '').split(','),
-    }));
+    try {
+      const rows = this.db.prepare(sql).all(
+        fullPathPattern,
+        fileNamePattern,
+        fullPathPattern,
+        fileNamePattern,
+        limit
+      ) as any[];
+
+      return rows.map((row) => ({
+        session: this.rowToSession(row),
+        operations: (row.operations || 'unknown').split(',').filter(Boolean),
+      }));
+    } catch (error) {
+      console.error('getSessionsForFile error:', error);
+      return [];
+    }
+  }
+
+  getSessionsForFileSimple(
+    filePath: string,
+    limit: number = 5
+  ): Array<{ session: Session; operations: string[] }> {
+    const fileName = path.basename(filePath);
+
+    // Simple search: find any event mentioning the file
+    const sql = `
+      SELECT DISTINCT s.*, 'unknown' as operations
+      FROM sessions s
+      JOIN events e ON e.session_id = s.id
+      WHERE e.content LIKE ? OR e.content LIKE ? OR e.metadata LIKE ? OR e.metadata LIKE ?
+      ORDER BY s.started_at DESC
+      LIMIT ?
+    `;
+
+    try {
+      const rows = this.db.prepare(sql).all(
+        `%${filePath}%`,
+        `%${fileName}%`,
+        `%${filePath}%`,
+        `%${fileName}%`,
+        limit
+      ) as any[];
+
+      return rows.map((row) => ({
+        session: this.rowToSession(row),
+        operations: ['referenced'],
+      }));
+    } catch (error) {
+      console.error('getSessionsForFileSimple error:', error);
+      return [];
+    }
   }
 
   // ============================================================================
@@ -736,55 +872,91 @@ export class InsightsDatabase {
   // ============================================================================
 
   searchEvents(query: string, options: EventSearchOptions = {}): Event[] {
-    let sql = `
-      SELECT e.*
-      FROM events e
-      JOIN events_fts fts ON e.id = fts.event_id
-      WHERE events_fts MATCH ?
-    `;
-    const params: any[] = [query];
+    const limit = options.limit || 20;
+    const sanitizedQuery = this.sanitizeFTSQuery(query);
 
-    if (options.sessionId) {
-      sql += ' AND e.session_id = ?';
-      params.push(options.sessionId);
+    // If query can't be sanitized, fall back to LIKE search
+    if (!sanitizedQuery) {
+      let sql = 'SELECT * FROM events WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?';
+      const params: any[] = [`%${query}%`, limit];
+
+      if (options.sessionId) {
+        sql = 'SELECT * FROM events WHERE content LIKE ? AND session_id = ? ORDER BY timestamp DESC LIMIT ?';
+        params.splice(1, 0, options.sessionId);
+      }
+
+      return this.db.prepare(sql).all(...params).map(row => this.rowToEvent(row));
     }
 
-    sql += ' ORDER BY e.timestamp DESC';
+    // Use FTS with sanitized query
+    try {
+      let sql = `
+        SELECT e.* FROM events e
+        JOIN events_fts fts ON fts.event_id = e.id
+        WHERE events_fts MATCH ?
+      `;
+      const params: any[] = [sanitizedQuery];
 
-    if (options.limit) {
-      sql += ' LIMIT ?';
-      params.push(options.limit);
+      if (options.sessionId) {
+        sql += ' AND e.session_id = ?';
+        params.push(options.sessionId);
+      }
+
+      sql += ` ORDER BY rank LIMIT ?`;
+      params.push(limit);
+
+      return this.db.prepare(sql).all(...params).map(row => this.rowToEvent(row));
+    } catch (error) {
+      // If FTS still fails, fall back to LIKE
+      console.error('FTS search failed, falling back to LIKE:', error);
+      return this.db.prepare(
+        'SELECT * FROM events WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?'
+      ).all(`%${query}%`, limit).map(row => this.rowToEvent(row));
     }
-
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.map(row => this.rowToEvent(row));
   }
 
   searchLearnings(query: string, options: LearningQueryOptions = {}): Learning[] {
-    let sql = `
-      SELECT l.*
-      FROM learnings l
-      JOIN learnings_fts fts ON l.id = fts.learning_id
-      WHERE learnings_fts MATCH ?
-    `;
-    const params: any[] = [query];
+    const limit = options.limit || 10;
+    const sanitizedQuery = this.sanitizeFTSQuery(query);
 
-    if (options.projectPath) {
-      sql += ' AND l.project_path = ?';
-      params.push(options.projectPath);
+    // If query can't be sanitized, fall back to LIKE search
+    if (!sanitizedQuery) {
+      let sql = 'SELECT * FROM learnings WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?';
+      const params: any[] = [`%${query}%`, limit];
+
+      if (options.projectPath) {
+        sql = `SELECT * FROM learnings WHERE content LIKE ? AND (project_path = ? OR scope = 'global') ORDER BY created_at DESC LIMIT ?`;
+        params.splice(1, 0, options.projectPath);
+      }
+
+      return this.db.prepare(sql).all(...params).map(row => this.rowToLearning(row));
     }
 
-    sql += ' ORDER BY l.created_at DESC';
+    // Use FTS with sanitized query
+    try {
+      let sql = `
+        SELECT l.* FROM learnings l
+        JOIN learnings_fts fts ON fts.learning_id = l.id
+        WHERE learnings_fts MATCH ?
+      `;
+      const params: any[] = [sanitizedQuery];
 
-    if (options.limit) {
-      sql += ' LIMIT ?';
-      params.push(options.limit);
+      if (options.projectPath) {
+        sql += " AND (l.project_path = ? OR l.scope = 'global')";
+        params.push(options.projectPath);
+      }
+
+      sql += ` ORDER BY rank LIMIT ?`;
+      params.push(limit);
+
+      return this.db.prepare(sql).all(...params).map(row => this.rowToLearning(row));
+    } catch (error) {
+      // If FTS still fails, fall back to LIKE
+      console.error('FTS search failed, falling back to LIKE:', error);
+      return this.db.prepare(
+        'SELECT * FROM learnings WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?'
+      ).all(`%${query}%`, limit).map(row => this.rowToLearning(row));
     }
-
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.map(row => this.rowToLearning(row));
   }
 
   getAllLearnings(): Learning[] {

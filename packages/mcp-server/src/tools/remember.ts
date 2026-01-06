@@ -16,12 +16,51 @@ export async function rememberTool(
     tags?: string[];
   }
 ): Promise<string> {
+  // Validate input
+  if (!args.content || typeof args.content !== 'string') {
+    return '⚠️ Error: content parameter is required and must be a string';
+  }
+
+  const content = args.content.trim();
+  if (content.length === 0) {
+    return '⚠️ Error: content cannot be empty';
+  }
+
+  if (content.length > 2000) {
+    return '⚠️ Error: content too long (max 2000 characters)';
+  }
+
+  if (!args.type) {
+    return '⚠️ Error: type parameter is required (pattern, antipattern, convention, fix, preference)';
+  }
+
+  const validTypes = ['pattern', 'antipattern', 'convention', 'fix', 'preference'];
+  if (!validTypes.includes(args.type)) {
+    return `⚠️ Error: Invalid type "${args.type}". Must be one of: ${validTypes.join(', ')}`;
+  }
+
+  if (args.scope) {
+    const validScopes = ['global', 'project', 'file', 'language'];
+    if (!validScopes.includes(args.scope)) {
+      return `⚠️ Error: Invalid scope "${args.scope}". Must be one of: ${validScopes.join(', ')}`;
+    }
+  }
+
+  // Validate tags if provided
+  if (args.tags && !Array.isArray(args.tags)) {
+    return '⚠️ Error: tags must be an array of strings';
+  }
+
+  if (args.tags && args.tags.length > 20) {
+    return '⚠️ Error: Too many tags (max 20)';
+  }
+
   // Create learning object
   const learning: Learning = {
     id: uuidv4(),
     sessionId: undefined, // MCP sessions don't have session IDs
     projectPath: undefined, // Could be detected from cwd in the future
-    content: args.content,
+    content,
     type: args.type,
     scope: args.scope || 'project',
     confidence: 0.9, // High confidence for explicit learnings
@@ -37,7 +76,7 @@ export async function rememberTool(
   db.insertLearning(learning);
 
   // Format success message
-  let output = `✓ **Remembered:** ${args.content}\n\n`;
+  let output = `✓ **Remembered:** ${content}\n\n`;
   output += `- **Type:** ${args.type}\n`;
   output += `- **Scope:** ${args.scope || 'project'}\n`;
 

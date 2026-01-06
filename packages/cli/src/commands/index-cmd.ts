@@ -11,6 +11,7 @@ interface IndexOptions {
   extract?: boolean;
   since?: string;
   verbose?: boolean;
+  force?: boolean;
 }
 
 /**
@@ -68,12 +69,14 @@ export const indexCommand = new Command('index')
   .option('--embed', 'Generate embeddings after indexing')
   .option('--extract', 'Extract learnings after indexing (requires ANTHROPIC_API_KEY)')
   .option('--since <date>', 'Only index sessions after this date (e.g., 7d, 2w, 1m, 2025-01-01)')
+  .option('-f, --force', 'Reindex all sessions (ignore already indexed)')
   .option('-v, --verbose', 'Show detailed parse warnings')
   .addHelpText('after', `
 Examples:
   $ cai index --since 7d           Only sessions from last 7 days
   $ cai index --since 2w           Only sessions from last 2 weeks
   $ cai index --since 2025-01-01   Only sessions after specific date
+  $ cai index --force              Reindex all sessions with improved parser
   $ cai index --verbose            Show detailed parse warnings`)
   .action(async (options: IndexOptions) => {
     const db = new InsightsDatabase();
@@ -113,8 +116,14 @@ Examples:
       // 5. spinner.succeed with count
       spinner.succeed(`Found ${sessionPaths.length} total sessions`);
 
-      // 6. Filter out already indexed
-      const newSessionPaths = sessionPaths.filter(p => !db.sessionExists(p));
+      // 6. Handle force mode or filter out already indexed
+      let newSessionPaths: string[];
+      if (options.force) {
+        console.log(chalk.yellow('\nForce mode enabled - will reindex existing sessions'));
+        newSessionPaths = sessionPaths;
+      } else {
+        newSessionPaths = sessionPaths.filter(p => !db.sessionExists(p));
+      }
 
       // 7. If no new sessions, log yellow message and return
       if (newSessionPaths.length === 0) {
@@ -123,7 +132,8 @@ Examples:
       }
 
       // 8. Log blue message
-      console.log(chalk.blue(`\nIndexing ${newSessionPaths.length} new sessions...`));
+      const actionWord = options.force ? 'Reindexing' : 'Indexing';
+      console.log(chalk.blue(`\n${actionWord} ${newSessionPaths.length} ${options.force ? '' : 'new '}sessions...`));
 
       // 9. Loop through new session paths
       let successCount = 0;
@@ -134,6 +144,11 @@ Examples:
 
       for (const sessionPath of newSessionPaths) {
         try {
+          // If force mode, delete existing data first
+          if (options.force) {
+            db.deleteSessionByPath(sessionPath);
+          }
+
           // Call parser.parseSession(path)
           const parsed = await parser.parseSession(sessionPath);
 

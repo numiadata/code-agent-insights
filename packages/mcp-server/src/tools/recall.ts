@@ -14,11 +14,30 @@ export async function recallTool(
     limit?: number;
   }
 ): Promise<string> {
+  // Validate input
+  if (!args.query || typeof args.query !== 'string') {
+    return '⚠️ Search error: Query parameter is required and must be a string';
+  }
+
+  const query = args.query.trim();
+  if (query.length === 0) {
+    return '⚠️ Search error: Query cannot be empty';
+  }
+
+  if (query.length > 500) {
+    return '⚠️ Search error: Query too long (max 500 characters)';
+  }
+
   const limit = args.limit || 5;
   const scope = args.scope || 'all';
 
+  // Validate limit
+  if (limit < 1 || limit > 100) {
+    return '⚠️ Search error: Limit must be between 1 and 100';
+  }
+
   // Search learnings using FTS
-  const allLearnings = db.searchLearnings(args.query, { limit: limit * 2 });
+  const allLearnings = db.searchLearnings(query, { limit: limit * 2 });
 
   // Filter by scope if specified
   let learnings = allLearnings;

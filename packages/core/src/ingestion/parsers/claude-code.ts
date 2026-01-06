@@ -338,54 +338,43 @@ export class ClaudeCodeParser {
               subAgentInvocations.push(subAgentInvocation);
             }
 
-            // Check if it's a file operation
-            if (toolName === 'view' && parameters.path) {
-              const fileEvent: Event = {
-                id: uuidv4(),
-                sessionId,
-                type: 'file_read',
-                timestamp,
-                sequenceNumber: sequenceNumber++,
-                content: parameters.path as string,
-                metadata: parameters,
-              };
-              events.push(fileEvent);
-            } else if (toolName === 'str_replace' && parameters.path) {
-              const fileEvent: Event = {
-                id: uuidv4(),
-                sessionId,
-                type: 'file_write',
-                timestamp,
-                sequenceNumber: sequenceNumber++,
-                content: parameters.path as string,
-                metadata: parameters,
-              };
-              events.push(fileEvent);
-            } else if (toolName === 'create_file' && parameters.path) {
-              const fileEvent: Event = {
-                id: uuidv4(),
-                sessionId,
-                type: 'file_create',
-                timestamp,
-                sequenceNumber: sequenceNumber++,
-                content: parameters.path as string,
-                metadata: parameters,
-              };
-              events.push(fileEvent);
+            // Extract file operations as dedicated events
+            const filePath = this.extractFilePath(parameters);
+            if (filePath) {
+              const fileEventType = this.getFileEventType(toolName);
+
+              if (fileEventType) {
+                const fileEvent: Event = {
+                  id: uuidv4(),
+                  sessionId,
+                  type: fileEventType,
+                  timestamp,
+                  sequenceNumber: sequenceNumber++,
+                  content: filePath,  // Store the file path as content
+                  metadata: {
+                    toolName,
+                    ...parameters,
+                  },
+                };
+                events.push(fileEvent);
+              }
             }
 
-            // Check if it's a command
-            if ((toolName === 'bash_tool' || toolName === 'bash') && parameters.command) {
-              const commandEvent: Event = {
-                id: uuidv4(),
-                sessionId,
-                type: 'command_execute',
-                timestamp,
-                sequenceNumber: sequenceNumber++,
-                content: parameters.command as string,
-                metadata: parameters,
-              };
-              events.push(commandEvent);
+            // Check if it's a command execution
+            if (toolName === 'bash_tool' || toolName === 'Bash' || toolName === 'bash') {
+              const command = (parameters.command as string) || '';
+              if (command) {
+                const commandEvent: Event = {
+                  id: uuidv4(),
+                  sessionId,
+                  type: 'command_execute',
+                  timestamp,
+                  sequenceNumber: sequenceNumber++,
+                  content: command,
+                  metadata: parameters,
+                };
+                events.push(commandEvent);
+              }
             }
           } else if (block.type === 'tool_result') {
             // Create tool_result event
@@ -558,6 +547,38 @@ export class ClaudeCodeParser {
   }
 
   // Helper methods
+
+  /**
+   * Extract file path from tool parameters.
+   * Different tools use different parameter names.
+   */
+  private extractFilePath(params: Record<string, unknown>): string | null {
+    const possibleKeys = ['path', 'file_path', 'filepath', 'file', 'filename', 'target', 'notebook_path'];
+
+    for (const key of possibleKeys) {
+      if (params[key] && typeof params[key] === 'string') {
+        return params[key] as string;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Determine file event type based on tool name.
+   * Maps various Claude Code tool names to file operation types.
+   */
+  private getFileEventType(toolName: string): 'file_read' | 'file_write' | 'file_create' | null {
+    const readTools = ['view', 'Read', 'read_file', 'cat', 'head', 'tail', 'Glob', 'Grep'];
+    const writeTools = ['str_replace', 'str_replace_editor', 'Edit', 'edit_file', 'write', 'patch', 'NotebookEdit'];
+    const createTools = ['create_file', 'Write', 'create', 'touch', 'file_create'];
+
+    if (readTools.includes(toolName)) return 'file_read';
+    if (writeTools.includes(toolName)) return 'file_write';
+    if (createTools.includes(toolName)) return 'file_create';
+
+    return null;
+  }
 
   private extractSkillName(skillPath: string): string {
     // Extract skill name from path (last directory name before SKILL.md)
