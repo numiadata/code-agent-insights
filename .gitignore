@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.db
+.env
+.emv
+.DS_Store
+*.log
+test-parser.js
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
