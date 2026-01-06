@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "code-agent-insights": {
+      "command": "node",
+      "args": [
+        "/Users/rafa/Documents/claude/code-agent-insights/packages/mcp-server/dist/index.js"
+      ],
+      "env": {}
+    }
+  }
+}

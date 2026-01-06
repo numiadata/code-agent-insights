@@ -43,6 +43,13 @@ Code Agent Insights helps developers build persistent memory and understanding a
 - Duplicate detection and cleanup
 - Low-confidence filtering
 
+### 🔌 MCP Server (New!)
+- **recall** - Search past learnings and sessions during coding
+- **remember** - Save learnings in real-time during sessions
+- **similar_errors** - Find past error resolutions
+- **file_history** - Get session history for files
+- Seamless integration with Claude Code
+
 ### 🛠️ Robust Parser
 - Handles malformed JSONL/JSON gracefully
 - Skips invalid lines while preserving valid data
@@ -102,6 +109,46 @@ cai review --limit 10
 # Clean up duplicates (dry run)
 cai clean --duplicates --dry-run
 ```
+
+## MCP Server Setup
+
+The MCP server provides in-session memory tools for Claude Code.
+
+### Configuration
+
+Add to your Claude Code MCP configuration:
+
+```bash
+# Using the CLI (recommended)
+claude mcp add --transport stdio code-agent-insights -- node /path/to/code-agent-insights/packages/mcp-server/dist/index.js
+
+# Or manually add to ~/.claude.json
+```
+
+Example `.mcp.json` in project root:
+```json
+{
+  "mcpServers": {
+    "code-agent-insights": {
+      "command": "node",
+      "args": ["/absolute/path/to/packages/mcp-server/dist/index.js"]
+    }
+  }
+}
+```
+
+**Important:** Restart Claude Code after configuration changes.
+
+### MCP Tools
+
+Once configured, these tools become available in Claude Code:
+
+- `mcp__code-agent-insights__recall` - Search learnings/sessions
+- `mcp__code-agent-insights__remember` - Save new learnings
+- `mcp__code-agent-insights__similar_errors` - Find past errors
+- `mcp__code-agent-insights__file_history` - Get file session history
+
+See [MCP_TESTING_GUIDE.md](./MCP_TESTING_GUIDE.md) for detailed testing instructions.
 
 ## CLI Commands
 
@@ -185,19 +232,22 @@ code-agent-insights/
 ├── packages/
 │   ├── core/          # TypeScript - types, storage, parsers
 │   ├── cli/           # TypeScript - CLI interface
+│   ├── mcp-server/    # TypeScript - MCP server for in-session tools
 │   └── extractor/     # Python - embeddings, LLM extraction
 ├── CLAUDE.md          # Project overview and architecture
-└── PROMPTS.md         # Development prompts and tasks
+├── PROMPTS.md         # Development prompts and tasks
+└── MCP_TESTING_GUIDE.md  # MCP server testing guide
 ```
 
 ### Tech Stack
 
-- **TypeScript** - CLI, core library
+- **TypeScript** - CLI, core library, MCP server
 - **Python** - Embeddings (sentence-transformers) and LLM extraction
 - **SQLite** - Local storage with FTS5 full-text search
 - **pnpm** - Monorepo management
 - **better-sqlite3** - High-performance Node.js SQLite binding
 - **Commander.js** - CLI framework
+- **@modelcontextprotocol/sdk** - MCP server implementation
 - **Claude API** - Learning extraction
 
 ## Database Schema
@@ -222,13 +272,15 @@ Session Sources (Claude Code, Cursor, VS Code)
            ↓
     TypeScript Parser
            ↓
-    SQLite Storage
+    SQLite Storage (~/.code-agent-insights/insights.db)
            ↓
    Python Extractor (optional)
            ↓
     ┌──────┴──────┐
     ↓             ↓
-  CLI          MCP Server (future)
+  CLI          MCP Server
+                  ↓
+           Claude Code Session
 ```
 
 ## Development
@@ -264,7 +316,7 @@ ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 ## Roadmap
 
 - [x] **Phase 1**: Core + CLI with search, stats, and feature tracking
-- [ ] **Phase 2**: MCP server for in-session recall/remember
+- [x] **Phase 2**: MCP server for in-session recall/remember (4 tools: recall, remember, similar_errors, file_history)
 - [ ] **Phase 3**: Git commit correlation
 - [ ] **Phase 4**: CI/CD outcome tracking
 - [ ] **Phase 5**: Team sync and manager dashboards

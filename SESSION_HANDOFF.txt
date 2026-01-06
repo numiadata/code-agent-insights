@@ -1,0 +1,93 @@
+═══════════════════════════════════════════════════════════════════════
+QUICK START FOR NEXT SESSION - Phase 2: MCP Server Implementation
+═══════════════════════════════════════════════════════════════════════
+
+📖 READ FIRST: /Users/rafa/Documents/claude/code-agent-insights/NEXT_SESSION.md
+
+This file has the complete context. Key points below:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT'S DONE ✓
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Phase 1: Complete CLI system with 7 commands
+✓ MCP server package created and configured
+✓ MCP server core with tool registration (261 lines)
+✓ 4 tool schemas defined with complete JSON schemas
+✓ 3 new database methods: searchErrors(), getSessionsForFile(), getLearningsForSession()
+✓ All packages build successfully
+✓ Documentation and examples created
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT'S NEXT → IMPLEMENT 4 TOOLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Task 3: packages/mcp-server/src/tools/recall.ts
+   → Search past sessions and learnings
+   → Use db.searchLearnings(query, options)
+   → Format as markdown with types/confidence/tags
+
+Task 4: packages/mcp-server/src/tools/remember.ts
+   → Save a learning during session
+   → Create Learning object, call db.insertLearning()
+   → Return confirmation message
+
+Task 5: packages/mcp-server/src/tools/similar-errors.ts
+   → Find similar errors and resolutions
+   → Use db.searchErrors(query, options)
+   → Show error context + resolution + learnings
+
+Task 6: packages/mcp-server/src/tools/file-history.ts
+   → Get sessions that modified a file
+   → Use db.getSessionsForFile(path, limit)
+   → Show operations + outcomes + learnings
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFERENCE FILES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Implementation specs:  PROMPTS.md (lines 2133-2579)
+Database methods:      packages/core/src/storage/database.ts
+Formatting examples:   packages/cli/src/commands/search.ts
+                      packages/cli/src/commands/learn.ts
+Server structure:      packages/mcp-server/src/server.ts
+Architecture:          CLAUDE.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUICK COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+cd /Users/rafa/Documents/claude/code-agent-insights
+
+# Build all packages
+pnpm build
+
+# Test a database method
+node -e "const {InsightsDatabase} = require('./packages/core/dist/index.js'); const db = new InsightsDatabase(); console.log(db.searchErrors('error', {limit: 1})); db.close();"
+
+# Check MCP server builds
+cd packages/mcp-server && pnpm build
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GIT STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Latest commit: bceafe9 (just pushed to origin/main)
+Repository:    https://github.com/numiadata/code-agent-insights
+Branch:        main (up to date)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUCCESS CRITERIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When done, Claude Code should be able to:
+1. Call recall tool → get relevant past learnings
+2. Call remember tool → save new learnings
+3. Call similar_errors tool → find past error resolutions
+4. Call file_history tool → see file modification history
+
+All tools should return formatted markdown strings.
+
+═══════════════════════════════════════════════════════════════════════
+START WITH: Read NEXT_SESSION.md then implement recall tool (Task 3)
+═══════════════════════════════════════════════════════════════════════
