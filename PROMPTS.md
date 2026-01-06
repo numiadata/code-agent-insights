@@ -1892,3 +1892,972 @@ cai stats
 5. **Task 4** (Parser edge cases) — Can be done anytime
 
 Recommended: Do Task 1 first to verify your build setup still works, then proceed in order.
+
+# Phase 2 Prompts — MCP Server
+
+Build the MCP server that enables Claude Code to recall and remember context during active sessions.
+
+---
+
+## Overview
+
+**Goal:** Claude Code can query past sessions and learnings mid-conversation.
+
+**End result:**
+```
+Developer: "Fix the auth middleware bug"
+Claude: [calls recall tool] "I found a similar issue in a past session. 
+        The fix was adding a null check on req.user before accessing properties."
+```
+
+**MCP Tools to implement:**
+| Tool | Purpose |
+|------|---------|
+| `recall` | Search learnings and sessions for relevant context |
+| `remember` | Save a learning during the session |
+| `similar_errors` | Find past sessions with similar errors |
+| `file_history` | Get sessions that touched a specific file |
+
+---
+
+## Task 1: MCP Server Package Setup
+
+**Why:** Create the new package with MCP SDK dependencies.
+
+```
+Create a new MCP server package at packages/mcp-server.
+
+1. Create packages/mcp-server/package.json:
+   {
+     "name": "@code-agent-insights/mcp-server",
+     "version": "0.1.0",
+     "main": "./dist/index.js",
+     "types": "./dist/index.d.ts",
+     "bin": {
+       "cai-mcp": "./dist/index.js"
+     },
+     "scripts": {
+       "build": "tsup src/index.ts --format cjs --dts",
+       "dev": "tsup src/index.ts --format cjs --watch",
+       "start": "node dist/index.js"
+     },
+     "dependencies": {
+       "@code-agent-insights/core": "workspace:*",
+       "@modelcontextprotocol/sdk": "^1.0.0"
+     },
+     "devDependencies": {
+       "@types/node": "^20.0.0",
+       "tsup": "^8.0.0",
+       "typescript": "^5.4.0"
+     }
+   }
+
+2. Create packages/mcp-server/tsconfig.json:
+   {
+     "extends": "../../tsconfig.json",
+     "compilerOptions": {
+       "outDir": "./dist",
+       "rootDir": "./src"
+     },
+     "include": ["src/**/*"]
+   }
+
+3. Create the folder structure:
+   packages/mcp-server/
+   ├── src/
+   │   ├── index.ts          # Entry point, starts server
+   │   ├── server.ts         # MCP server setup
+   │   └── tools/
+   │       ├── recall.ts
+   │       ├── remember.ts
+   │       ├── similar-errors.ts
+   │       └── file-history.ts
+   └── package.json
+
+4. Create a placeholder src/index.ts:
+   #!/usr/bin/env node
+   console.log('MCP Server starting...');
+   // Will be implemented in next tasks
+
+5. Run from root: pnpm install
+
+Verify the package is recognized: pnpm --filter @code-agent-insights/mcp-server build
+```
+
+---
+
+## Task 2: MCP Server Core Setup
+
+**Why:** Set up the MCP SDK server with tool registration.
+
+```
+Implement the MCP server core in packages/mcp-server/src/server.ts:
+
+Import from @modelcontextprotocol/sdk:
+- Server from '@modelcontextprotocol/sdk/server/index.js'
+- StdioServerTransport from '@modelcontextprotocol/sdk/server/stdio.js'
+- CallToolRequestSchema, ListToolsRequestSchema from '@modelcontextprotocol/sdk/types.js'
+
+Import from @code-agent-insights/core:
+- InsightsDatabase
+
+Create class InsightsMCPServer:
+
+1. Constructor:
+   - Initialize InsightsDatabase instance
+   - Create MCP Server with name 'code-agent-insights' and version '0.1.0'
+   - Declare capabilities: { tools: {} }
+   - Call setupToolHandlers()
+
+2. Method setupToolHandlers():
+   
+   a. Register ListToolsRequestSchema handler that returns all tools:
+   
+   {
+     tools: [
+       {
+         name: 'recall',
+         description: 'Search past coding sessions and learnings for relevant context. Use this when the user asks about past work, mentions a problem they\'ve seen before, or when you need context about how something was done previously.',
+         inputSchema: {
+           type: 'object',
+           properties: {
+             query: {
+               type: 'string',
+               description: 'What to search for - describe the problem, pattern, or topic'
+             },
+             scope: {
+               type: 'string',
+               enum: ['project', 'global', 'all'],
+               description: 'Search scope: project (current project), global (universal learnings), or all'
+             },
+             limit: {
+               type: 'number',
+               description: 'Maximum results to return (default: 5)'
+             }
+           },
+           required: ['query']
+         }
+       },
+       {
+         name: 'remember',
+         description: 'Save a learning, pattern, or convention for future sessions. Use when discovering something important that should be remembered.',
+         inputSchema: {
+           type: 'object',
+           properties: {
+             content: {
+               type: 'string',
+               description: 'The learning to remember - be specific and actionable'
+             },
+             type: {
+               type: 'string',
+               enum: ['pattern', 'antipattern', 'convention', 'fix', 'preference'],
+               description: 'Type of learning'
+             },
+             scope: {
+               type: 'string',
+               enum: ['global', 'project', 'file', 'language'],
+               description: 'Where this applies (default: project)'
+             },
+             tags: {
+               type: 'array',
+               items: { type: 'string' },
+               description: 'Keywords for easier retrieval'
+             }
+           },
+           required: ['content', 'type']
+         }
+       },
+       {
+         name: 'similar_errors',
+         description: 'Find past sessions where similar errors were encountered and resolved. Use when hitting an error to see if it\'s been solved before.',
+         inputSchema: {
+           type: 'object',
+           properties: {
+             error_message: {
+               type: 'string',
+               description: 'The error message or key part of it'
+             },
+             error_type: {
+               type: 'string',
+               description: 'Error type like TypeError, SyntaxError, etc.'
+             },
+             limit: {
+               type: 'number',
+               description: 'Maximum results (default: 5)'
+             }
+           },
+           required: ['error_message']
+         }
+       },
+       {
+         name: 'file_history',
+         description: 'Get history of past sessions that worked on a specific file. Use to understand past changes or find related context.',
+         inputSchema: {
+           type: 'object',
+           properties: {
+             file_path: {
+               type: 'string',
+               description: 'Path to the file (relative or absolute)'
+             },
+             limit: {
+               type: 'number',
+               description: 'Maximum sessions to return (default: 5)'
+             }
+           },
+           required: ['file_path']
+         }
+       }
+     ]
+   }
+
+   b. Register CallToolRequestSchema handler that routes to tool implementations:
+   
+   - Extract tool name and arguments from request
+   - Switch on tool name and call appropriate handler
+   - Wrap responses in { content: [{ type: 'text', text: '...' }] }
+   - Handle errors gracefully with error messages
+
+3. Method start():
+   - Create StdioServerTransport
+   - Call server.connect(transport)
+   - Log to stderr: 'Code Agent Insights MCP server running'
+
+4. Export the class and a convenience function:
+   export async function startServer() {
+     const server = new InsightsMCPServer();
+     await server.start();
+   }
+```
+
+---
+
+## Task 3: Implement Recall Tool
+
+**Why:** The core search functionality - find relevant past context.
+
+```
+Create packages/mcp-server/src/tools/recall.ts:
+
+Import InsightsDatabase from @code-agent-insights/core.
+
+Export interface RecallParams {
+  query: string;
+  scope?: 'project' | 'global' | 'all';
+  limit?: number;
+}
+
+Export interface RecallResult {
+  learnings: Array<{
+    type: string;
+    content: string;
+    tags: string[];
+    confidence: number;
+    projectPath?: string;
+  }>;
+  sessions: Array<{
+    projectName: string;
+    date: string;
+    summary?: string;
+    outcome: string;
+    relevantSnippet?: string;
+  }>;
+  totalFound: number;
+}
+
+Export async function recall(db: InsightsDatabase, params: RecallParams): Promise<RecallResult>
+
+Implementation:
+
+1. Set defaults: limit = params.limit || 5, scope = params.scope || 'all'
+
+2. Search learnings:
+   - Call db.searchLearnings(params.query, { limit, projectPath: scope === 'project' ? getCurrentProjectPath() : undefined })
+   - Map results to simplified format
+
+3. Search events/sessions:
+   - Call db.searchEvents(params.query, { limit })
+   - Get unique session IDs from results
+   - Fetch session details for each
+   - Extract relevant snippet from matching events
+
+4. Combine and format results
+
+5. Return structured RecallResult
+
+Helper function getCurrentProjectPath():
+- Check process.env.PROJECT_PATH or process.cwd()
+- This will be set by Claude Code when invoking the MCP server
+
+Format the response as readable text:
+
+function formatRecallResponse(result: RecallResult): string {
+  const parts: string[] = [];
+  
+  if (result.learnings.length > 0) {
+    parts.push('## Relevant Learnings\n');
+    for (const l of result.learnings) {
+      parts.push(`**[${l.type}]** ${l.content}`);
+      if (l.tags.length > 0) {
+        parts.push(`  _Tags: ${l.tags.join(', ')}_`);
+      }
+      parts.push('');
+    }
+  }
+  
+  if (result.sessions.length > 0) {
+    parts.push('## Related Past Sessions\n');
+    for (const s of result.sessions) {
+      parts.push(`**${s.projectName}** (${s.date}) - ${s.outcome}`);
+      if (s.summary) {
+        parts.push(`  ${s.summary}`);
+      }
+      if (s.relevantSnippet) {
+        parts.push(`  > ${s.relevantSnippet.slice(0, 200)}...`);
+      }
+      parts.push('');
+    }
+  }
+  
+  if (result.totalFound === 0) {
+    parts.push('No relevant past context found for this query.');
+  }
+  
+  return parts.join('\n');
+}
+```
+
+---
+
+## Task 4: Implement Remember Tool
+
+**Why:** Save learnings discovered during sessions.
+
+```
+Create packages/mcp-server/src/tools/remember.ts:
+
+Import InsightsDatabase, Learning from @code-agent-insights/core.
+Import { v4 as uuidv4 } from 'uuid'.
+
+Export interface RememberParams {
+  content: string;
+  type: 'pattern' | 'antipattern' | 'convention' | 'fix' | 'preference';
+  scope?: 'global' | 'project' | 'file' | 'language';
+  tags?: string[];
+  relatedFiles?: string[];
+}
+
+Export interface RememberResult {
+  success: boolean;
+  learningId: string;
+  message: string;
+}
+
+Export async function remember(db: InsightsDatabase, params: RememberParams): Promise<RememberResult>
+
+Implementation:
+
+1. Validate content is not empty
+
+2. Create Learning object:
+   {
+     id: uuidv4(),
+     content: params.content,
+     type: params.type,
+     scope: params.scope || 'project',
+     confidence: 1.0,  // Explicit learnings are high confidence
+     tags: params.tags || [],
+     relatedFiles: params.relatedFiles || [],
+     relatedErrors: [],
+     source: 'explicit',
+     appliedCount: 0,
+     projectPath: getCurrentProjectPath(),
+     createdAt: new Date()
+   }
+
+3. Insert with db.insertLearning(learning)
+
+4. Return success result:
+   {
+     success: true,
+     learningId: learning.id,
+     message: `Remembered: [${params.type}] ${params.content.slice(0, 50)}...`
+   }
+
+5. Handle errors and return failure result if needed
+
+Format response:
+
+function formatRememberResponse(result: RememberResult): string {
+  if (result.success) {
+    return `✓ ${result.message}\n\nThis will be available in future sessions.`;
+  } else {
+    return `✗ Failed to save learning: ${result.message}`;
+  }
+}
+```
+
+---
+
+## Task 5: Implement Similar Errors Tool
+
+**Why:** Surface past error resolutions - high-value for debugging.
+
+```
+Create packages/mcp-server/src/tools/similar-errors.ts:
+
+Import InsightsDatabase from @code-agent-insights/core.
+
+Export interface SimilarErrorsParams {
+  error_message: string;
+  error_type?: string;
+  limit?: number;
+}
+
+Export interface ErrorMatch {
+  errorMessage: string;
+  errorType: string;
+  resolved: boolean;
+  resolution?: string;
+  sessionDate: string;
+  projectName: string;
+  relatedLearnings: string[];
+}
+
+Export interface SimilarErrorsResult {
+  matches: ErrorMatch[];
+  totalFound: number;
+}
+
+Export async function similarErrors(db: InsightsDatabase, params: SimilarErrorsParams): Promise<SimilarErrorsResult>
+
+Implementation:
+
+1. Set defaults: limit = params.limit || 5
+
+2. Search for matching errors in the database:
+   - Add a method to InsightsDatabase if needed: searchErrors(query, options)
+   - Search by error_message content (fuzzy match)
+   - Filter by error_type if provided
+
+3. For each matching error:
+   - Get the session it occurred in
+   - Check if it was resolved (resolved = true)
+   - Find any learnings from that session with type = 'fix'
+   - Build ErrorMatch object
+
+4. Search learnings for related fixes:
+   - Query: error_message + error_type + "fix"
+   - Add to relatedLearnings array
+
+5. Sort by relevance (resolved errors first, then by recency)
+
+6. Return results
+
+Format response:
+
+function formatSimilarErrorsResponse(result: SimilarErrorsResult): string {
+  if (result.matches.length === 0) {
+    return 'No similar errors found in past sessions.';
+  }
+  
+  const parts: string[] = ['## Similar Errors from Past Sessions\n'];
+  
+  for (const match of result.matches) {
+    const status = match.resolved ? '✓ Resolved' : '✗ Unresolved';
+    parts.push(`**${match.errorType}** (${status})`);
+    parts.push(`  ${match.errorMessage.slice(0, 100)}...`);
+    parts.push(`  _${match.projectName} - ${match.sessionDate}_`);
+    
+    if (match.resolution) {
+      parts.push(`  **Fix:** ${match.resolution}`);
+    }
+    
+    if (match.relatedLearnings.length > 0) {
+      parts.push(`  **Related learnings:**`);
+      for (const l of match.relatedLearnings) {
+        parts.push(`    - ${l}`);
+      }
+    }
+    parts.push('');
+  }
+  
+  return parts.join('\n');
+}
+```
+
+---
+
+## Task 6: Implement File History Tool
+
+**Why:** Understand past work on specific files.
+
+```
+Create packages/mcp-server/src/tools/file-history.ts:
+
+Import InsightsDatabase from @code-agent-insights/core.
+
+Export interface FileHistoryParams {
+  file_path: string;
+  limit?: number;
+}
+
+Export interface FileSession {
+  sessionId: string;
+  projectName: string;
+  date: string;
+  operations: string[];  // 'read', 'write', 'create'
+  summary?: string;
+  outcome: string;
+  relatedLearnings: string[];
+}
+
+Export interface FileHistoryResult {
+  filePath: string;
+  sessions: FileSession[];
+  totalSessions: number;
+}
+
+Export async function fileHistory(db: InsightsDatabase, params: FileHistoryParams): Promise<FileHistoryResult>
+
+Implementation:
+
+1. Normalize the file path:
+   - Handle both relative and absolute paths
+   - Extract just the filename for fuzzy matching if full path not found
+
+2. Query session_files table (or events with file operations):
+   - Need to add method to InsightsDatabase: getSessionsForFile(filePath, limit)
+   - Search for matching file_path in session_files or events
+   - Support partial matching (file name without full path)
+
+3. For each matching session:
+   - Get session details
+   - Collect all operations on this file (read, write, create)
+   - Find any learnings from that session related to the file
+
+4. Sort by date descending (most recent first)
+
+5. Return results
+
+Add to InsightsDatabase in packages/core/src/storage/database.ts:
+
+getSessionsForFile(filePath: string, limit: number = 5): Array<{session: Session, operations: string[]}> {
+  // Query events table for file operations matching the path
+  const sql = `
+    SELECT DISTINCT 
+      e.session_id,
+      e.type as operation,
+      s.*
+    FROM events e
+    JOIN sessions s ON e.session_id = s.id
+    WHERE e.type IN ('file_read', 'file_write', 'file_create')
+      AND (e.content LIKE ? OR e.content LIKE ?)
+    ORDER BY s.started_at DESC
+    LIMIT ?
+  `;
+  
+  const fullPathPattern = `%${filePath}%`;
+  const fileNamePattern = `%${path.basename(filePath)}%`;
+  
+  // Execute and group by session
+}
+
+Format response:
+
+function formatFileHistoryResponse(result: FileHistoryResult): string {
+  if (result.sessions.length === 0) {
+    return `No past sessions found that worked on "${result.filePath}".`;
+  }
+  
+  const parts: string[] = [`## History for ${result.filePath}\n`];
+  parts.push(`Found ${result.totalSessions} sessions:\n`);
+  
+  for (const s of result.sessions) {
+    parts.push(`**${s.projectName}** (${s.date}) - ${s.outcome}`);
+    parts.push(`  Operations: ${s.operations.join(', ')}`);
+    if (s.summary) {
+      parts.push(`  ${s.summary}`);
+    }
+    if (s.relatedLearnings.length > 0) {
+      parts.push(`  Learnings:`);
+      for (const l of s.relatedLearnings) {
+        parts.push(`    - ${l}`);
+      }
+    }
+    parts.push('');
+  }
+  
+  return parts.join('\n');
+}
+```
+
+---
+
+## Task 7: Wire Up Server Entry Point
+
+**Why:** Connect all tools and make the server executable.
+
+```
+Complete packages/mcp-server/src/index.ts:
+
+#!/usr/bin/env node
+
+import { InsightsMCPServer } from './server.js';
+
+async function main() {
+  try {
+    const server = new InsightsMCPServer();
+    await server.start();
+  } catch (error) {
+    console.error('Failed to start MCP server:', error);
+    process.exit(1);
+  }
+}
+
+main();
+
+Update packages/mcp-server/src/server.ts to wire up the tools:
+
+import { recall, formatRecallResponse } from './tools/recall.js';
+import { remember, formatRememberResponse } from './tools/remember.js';
+import { similarErrors, formatSimilarErrorsResponse } from './tools/similar-errors.js';
+import { fileHistory, formatFileHistoryResponse } from './tools/file-history.js';
+
+In the CallToolRequestSchema handler:
+
+async (request) => {
+  const { name, arguments: args } = request.params;
+  
+  try {
+    switch (name) {
+      case 'recall': {
+        const result = await recall(this.db, args as RecallParams);
+        return {
+          content: [{ type: 'text', text: formatRecallResponse(result) }]
+        };
+      }
+      
+      case 'remember': {
+        const result = await remember(this.db, args as RememberParams);
+        return {
+          content: [{ type: 'text', text: formatRememberResponse(result) }]
+        };
+      }
+      
+      case 'similar_errors': {
+        const result = await similarErrors(this.db, args as SimilarErrorsParams);
+        return {
+          content: [{ type: 'text', text: formatSimilarErrorsResponse(result) }]
+        };
+      }
+      
+      case 'file_history': {
+        const result = await fileHistory(this.db, args as FileHistoryParams);
+        return {
+          content: [{ type: 'text', text: formatFileHistoryResponse(result) }]
+        };
+      }
+      
+      default:
+        return {
+          content: [{ type: 'text', text: `Unknown tool: ${name}` }],
+          isError: true
+        };
+    }
+  } catch (error) {
+    return {
+      content: [{ type: 'text', text: `Error: ${error.message}` }],
+      isError: true
+    };
+  }
+}
+
+Build the package:
+cd packages/mcp-server && pnpm build
+```
+
+---
+
+## Task 8: Add Database Methods for MCP Tools
+
+**Why:** The tools need some new query methods in the core database.
+
+```
+Add the following methods to packages/core/src/storage/database.ts:
+
+1. searchErrors(query: string, options: { errorType?: string, limit?: number }): ErrorRecord[]
+
+   Search the errors table with FTS or LIKE matching:
+   
+   searchErrors(query: string, options: { errorType?: string, limit?: number } = {}): ErrorRecord[] {
+     const limit = options.limit || 10;
+     let sql = `
+       SELECT e.*, s.project_name, s.started_at as session_date
+       FROM errors e
+       JOIN sessions s ON e.session_id = s.id
+       WHERE e.error_message LIKE ?
+     `;
+     const params: any[] = [`%${query}%`];
+     
+     if (options.errorType) {
+       sql += ' AND e.error_type = ?';
+       params.push(options.errorType);
+     }
+     
+     sql += ' ORDER BY e.timestamp DESC LIMIT ?';
+     params.push(limit);
+     
+     return this.db.prepare(sql).all(...params).map(this.rowToError);
+   }
+
+2. getSessionsForFile(filePath: string, limit: number = 5): Array<{session: Session, operations: string[]}>
+
+   Find sessions that touched a specific file:
+   
+   getSessionsForFile(filePath: string, limit: number = 5): Array<{session: Session, operations: string[]}> {
+     const fileName = path.basename(filePath);
+     
+     const sql = `
+       SELECT 
+         s.*,
+         GROUP_CONCAT(DISTINCT e.type) as operations
+       FROM sessions s
+       JOIN events e ON e.session_id = s.id
+       WHERE e.type IN ('file_read', 'file_write', 'file_create')
+         AND (e.content LIKE ? OR e.content LIKE ?)
+       GROUP BY s.id
+       ORDER BY s.started_at DESC
+       LIMIT ?
+     `;
+     
+     const rows = this.db.prepare(sql).all(
+       `%${filePath}%`,
+       `%${fileName}%`,
+       limit
+     );
+     
+     return rows.map((row: any) => ({
+       session: this.rowToSession(row),
+       operations: (row.operations || '').split(',')
+     }));
+   }
+
+3. getLearningsForSession(sessionId: string): Learning[]
+
+   Get all learnings associated with a session:
+   
+   getLearningsForSession(sessionId: string): Learning[] {
+     const sql = 'SELECT * FROM learnings WHERE session_id = ?';
+     return this.db.prepare(sql).all(sessionId).map(this.rowToLearning);
+   }
+
+4. Update the rowToError helper if it doesn't exist:
+
+   private rowToError(row: any): ErrorRecord {
+     return {
+       id: row.id,
+       sessionId: row.session_id,
+       eventId: row.event_id,
+       errorType: row.error_type,
+       errorMessage: row.error_message,
+       stackTrace: row.stack_trace,
+       filePath: row.file_path,
+       lineNumber: row.line_number,
+       resolved: !!row.resolved,
+       resolutionEventId: row.resolution_event_id,
+       timestamp: new Date(row.timestamp)
+     };
+   }
+
+Don't forget to export these new methods.
+
+Rebuild core: cd packages/core && pnpm build
+```
+
+---
+
+## Task 9: Register MCP Server with Claude Code
+
+**Why:** Claude Code needs to know about the MCP server to use it.
+
+```
+Claude Code uses a configuration file to register MCP servers.
+
+1. First, build and link the MCP server globally:
+   
+   cd packages/mcp-server
+   pnpm build
+   pnpm link --global
+
+2. Verify the binary is available:
+   
+   which cai-mcp
+   # or
+   cai-mcp --help  # Should show "MCP Server starting..."
+
+3. Find your Claude Code MCP config location:
+   
+   # Usually at:
+   ~/.claude/mcp_servers.json
+   # or
+   ~/.config/claude/mcp_servers.json
+
+4. Add the code-agent-insights MCP server to the config:
+
+   {
+     "mcpServers": {
+       "code-agent-insights": {
+         "command": "cai-mcp",
+         "args": [],
+         "env": {}
+       }
+     }
+   }
+
+   If the file already has other servers, add to the existing mcpServers object.
+
+5. Alternative: Use absolute path if linking doesn't work:
+
+   {
+     "mcpServers": {
+       "code-agent-insights": {
+         "command": "node",
+         "args": ["/full/path/to/code-agent-insights/packages/mcp-server/dist/index.js"],
+         "env": {}
+       }
+     }
+   }
+
+6. Restart Claude Code for changes to take effect.
+
+7. Verify the MCP server is loaded:
+   - Start a Claude Code session
+   - Check if the tools appear in available tools
+   - Or ask Claude: "What MCP tools do you have available?"
+```
+
+---
+
+## Task 10: Test the MCP Integration
+
+**Why:** Verify everything works end-to-end.
+
+```
+Test each tool in a Claude Code session:
+
+1. Test recall:
+   
+   Ask Claude: "Search my past sessions for anything about authentication bugs"
+   
+   Expected: Claude calls the recall tool and returns relevant learnings/sessions.
+
+2. Test remember:
+   
+   Ask Claude: "Remember that in this project we always use pnpm, never npm"
+   
+   Expected: Claude calls remember tool, confirms it was saved.
+   
+   Verify: Run `cai search "pnpm"` in terminal to see the new learning.
+
+3. Test similar_errors:
+   
+   Create a file with a deliberate error, then ask Claude to fix it.
+   
+   Or ask: "Have I seen any TypeError issues before?"
+   
+   Expected: Claude calls similar_errors and shows past occurrences.
+
+4. Test file_history:
+   
+   Ask Claude: "What's the history of changes to package.json in my sessions?"
+   
+   Expected: Claude calls file_history and shows past sessions that touched that file.
+
+5. Test natural integration:
+   
+   Start a real coding task and see if Claude naturally uses these tools when relevant.
+   
+   For example, when hitting an error, does Claude check similar_errors automatically?
+
+Debugging:
+
+If tools don't appear:
+- Check MCP config file syntax (valid JSON)
+- Check server binary path is correct
+- Look at Claude Code logs for MCP errors
+- Try running `cai-mcp` directly to see if it starts
+
+If tools error:
+- Check database path is accessible from MCP server
+- Add logging to server.ts to debug
+- Check stderr output when running cai-mcp
+```
+
+---
+
+## Verification Checklist
+
+After completing all tasks:
+
+```bash
+# Build everything
+cd /path/to/code-agent-insights
+pnpm build
+
+# Verify MCP server runs standalone
+cai-mcp
+# Should output: "Code Agent Insights MCP server running"
+# (Ctrl+C to exit)
+
+# Verify database methods work
+# (These are tested via the CLI)
+cai search "test"
+cai stats
+
+# Start Claude Code and test
+claude
+# Ask: "What tools do you have for searching past sessions?"
+# Ask: "Remember that I prefer TypeScript over JavaScript"
+# Ask: "Search for any authentication related learnings"
+```
+
+---
+
+## Order of Implementation
+
+1. **Task 1** — Package setup (5 min)
+2. **Task 2** — Server core with tool registration (20 min)
+3. **Task 8** — Database methods (15 min) — do this before tools
+4. **Task 3** — Recall tool (15 min)
+5. **Task 4** — Remember tool (10 min)
+6. **Task 5** — Similar errors tool (15 min)
+7. **Task 6** — File history tool (15 min)
+8. **Task 7** — Wire up entry point (10 min)
+9. **Task 9** — Register with Claude Code (10 min)
+10. **Task 10** — Test end-to-end (15 min)
+
+**Total estimated time:** ~2 hours
+
+---
+
+## Troubleshooting
+
+**"MCP server not found"**
+- Check `which cai-mcp` returns a path
+- Try using absolute path in config
+- Rebuild: `pnpm build`
+
+**"Tool call failed"**
+- Check database exists at ~/.code-agent-insights/insights.db
+- Run `cai stats` to verify database works
+- Add console.error logging to tool handlers
+
+**"No results returned"**
+- Verify you have indexed sessions: `cai index`
+- Check search works via CLI: `cai search "test"`
+- The MCP server uses the same database
+
+**"Claude doesn't use the tools"**
+- Tools are available but Claude decides when to use them
+- Try explicit requests: "Use the recall tool to search for..."
+- Check tool descriptions are clear about when to use them
