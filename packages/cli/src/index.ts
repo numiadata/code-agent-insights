@@ -9,6 +9,7 @@ import { recommendCommand } from './commands/recommend';
 import { cleanCommand } from './commands/clean';
 import { reviewCommand } from './commands/review';
 import { syncCommand } from './commands/sync';
+import { projectsCommand } from './commands/projects';
 
 const program = new Command();
 
@@ -26,5 +27,6 @@ program.addCommand(recommendCommand);
 program.addCommand(cleanCommand);
 program.addCommand(reviewCommand);
 program.addCommand(syncCommand);
+program.addCommand(projectsCommand);
 
 program.parse();
