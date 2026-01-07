@@ -445,14 +445,17 @@ export class InsightsDatabase {
    * Note: Learnings are preserved to maintain extracted knowledge.
    */
   deleteSession(sessionId: string): void {
-    this.db.prepare('DELETE FROM events WHERE session_id = ?').run(sessionId);
+    // Delete in order respecting foreign key constraints
+    // tool_calls references events, so delete it first
     this.db.prepare('DELETE FROM tool_calls WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM events WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM errors WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM skill_invocations WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM sub_agent_invocations WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM tool_sequences WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM session_modes WHERE session_id = ?').run(sessionId);
-    // Don't delete learnings - keep extracted knowledge
+    // Don't delete learnings - keep extracted knowledge, but unlink from session
+    this.db.prepare('UPDATE learnings SET session_id = NULL WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
   }
 
@@ -1280,6 +1283,14 @@ export class InsightsDatabase {
 
   close(): void {
     this.db.close();
+  }
+
+  /**
+   * Create a transaction function for atomic operations.
+   * Useful for grouping multiple database operations that should succeed or fail together.
+   */
+  transaction<T extends any[]>(fn: (...args: T) => void): (...args: T) => void {
+    return this.db.transaction(fn);
   }
 
   // ============================================================================

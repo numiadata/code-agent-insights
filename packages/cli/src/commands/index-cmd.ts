@@ -141,28 +141,35 @@ Examples:
       let totalWarnings = 0;
       const total = newSessionPaths.length;
       const sessionWarnings: Map<string, string[]> = new Map();
+      const sessionErrors: Map<string, string> = new Map();
 
       for (const sessionPath of newSessionPaths) {
         try {
-          // If force mode, delete existing data first
-          if (options.force) {
-            db.deleteSessionByPath(sessionPath);
-          }
-
-          // Call parser.parseSession(path)
+          // Parse the session first (outside transaction since it's async)
           const parsed = await parser.parseSession(sessionPath);
 
-          // Insert: session, events, toolCalls, errors
-          db.insertSession(parsed.session);
-          db.insertEvents(parsed.events);
-          db.insertToolCalls(parsed.toolCalls);
-          db.insertErrors(parsed.errors);
+          // Execute all DB operations in a single transaction for atomicity
+          const insertTransaction = db.transaction(() => {
+            // If force mode, delete existing data first
+            if (options.force) {
+              db.deleteSessionByPath(sessionPath);
+            }
 
-          // Insert: skillInvocations, subAgentInvocations, toolSequences, sessionModes
-          db.insertSkillInvocations(parsed.skillInvocations);
-          db.insertSubAgentInvocations(parsed.subAgentInvocations);
-          db.insertToolSequences(parsed.toolSequences);
-          db.insertSessionModes(parsed.sessionModes);
+            // Insert: session, events, toolCalls, errors
+            db.insertSession(parsed.session);
+            db.insertEvents(parsed.events);
+            db.insertToolCalls(parsed.toolCalls);
+            db.insertErrors(parsed.errors);
+
+            // Insert: skillInvocations, subAgentInvocations, toolSequences, sessionModes
+            db.insertSkillInvocations(parsed.skillInvocations);
+            db.insertSubAgentInvocations(parsed.subAgentInvocations);
+            db.insertToolSequences(parsed.toolSequences);
+            db.insertSessionModes(parsed.sessionModes);
+          });
+
+          // Execute the transaction
+          insertTransaction();
 
           // Track warnings
           if (parsed.stats.warnings.length > 0) {
@@ -176,8 +183,9 @@ Examples:
           // Log progress
           process.stdout.write(`\r  Indexed: ${successCount}/${total}`);
         } catch (error) {
-          // On error: increment error counter, continue
+          // On error: track the error message and increment counter
           errorCount++;
+          sessionErrors.set(sessionPath, (error as Error).message || String(error));
         }
       }
 
@@ -205,6 +213,16 @@ Examples:
       // 11. If errors > 0, log yellow warning
       if (errorCount > 0) {
         console.log(chalk.yellow(`⚠ Failed to index ${errorCount} sessions`));
+
+        if (options.verbose && sessionErrors.size > 0) {
+          console.log(chalk.red('\nParse Errors:'));
+          for (const [sessionPath, errorMsg] of sessionErrors) {
+            console.log(chalk.dim(`\n${sessionPath}:`));
+            console.log(chalk.red(`  ✗ ${errorMsg}`));
+          }
+        } else if (!options.verbose) {
+          console.log(chalk.dim('Run with --verbose to see detailed errors'));
+        }
       }
 
       // 12. If options.embed
