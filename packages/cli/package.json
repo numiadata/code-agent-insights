@@ -2,13 +2,20 @@
   "name": "code-agent-insights",
   "version": "0.1.0",
   "description": "Analytics and memory for coding agents",
-  "main": "./dist/index.js",
+  "main": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
   "bin": {
     "cai": "./dist/index.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "default": "./dist/lib.js"
+    }
+  },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs --dts",
-    "dev": "tsup src/index.ts --format cjs --watch"
+    "build": "tsup src/index.ts src/lib.ts --format cjs --dts",
+    "dev": "tsup src/index.ts src/lib.ts --format cjs --watch"
   },
   "dependencies": {
     "@code-agent-insights/core": "workspace:*",
