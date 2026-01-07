@@ -1,93 +1,269 @@
 ═══════════════════════════════════════════════════════════════════════
-QUICK START FOR NEXT SESSION - Phase 2: MCP Server Implementation
+SESSION HANDOFF - Code Agent Insights v0.1.0
+Phase 3 COMPLETE ✅ | All Tests Passing | Ready for Phase 4
 ═══════════════════════════════════════════════════════════════════════
 
-📖 READ FIRST: /Users/rafa/Documents/claude/code-agent-insights/NEXT_SESSION.md
-
-This file has the complete context. Key points below:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WHAT'S DONE ✓
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✓ Phase 1: Complete CLI system with 7 commands
-✓ MCP server package created and configured
-✓ MCP server core with tool registration (261 lines)
-✓ 4 tool schemas defined with complete JSON schemas
-✓ 3 new database methods: searchErrors(), getSessionsForFile(), getLearningsForSession()
-✓ All packages build successfully
-✓ Documentation and examples created
+Last Updated: 2026-01-07 15:08 CET
+Latest Commit: 467fb43 (pushed to origin/main)
+Repository: https://github.com/numiadata/code-agent-insights
+Branch: main (up to date)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WHAT'S NEXT → IMPLEMENT 4 TOOLS
+PROJECT STATUS OVERVIEW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Task 3: packages/mcp-server/src/tools/recall.ts
-   → Search past sessions and learnings
-   → Use db.searchLearnings(query, options)
-   → Format as markdown with types/confidence/tags
+✅ Phase 1: Core CLI System (7 commands)
+   - index, search, stats, learn, recommend, clean, review
+   - Full-text search with FTS5
+   - Interactive learning review
+   - Mode effectiveness tracking
 
-Task 4: packages/mcp-server/src/tools/remember.ts
-   → Save a learning during session
-   → Create Learning object, call db.insertLearning()
-   → Return confirmation message
+✅ Phase 2: MCP Server (4 tools)
+   - recall: Search past learnings and sessions
+   - remember: Save learnings in real-time
+   - similar_errors: Find past error resolutions
+   - file_history: Get session history for files
+   - Fully tested and documented
 
-Task 5: packages/mcp-server/src/tools/similar-errors.ts
-   → Find similar errors and resolutions
-   → Use db.searchErrors(query, options)
-   → Show error context + resolution + learnings
-
-Task 6: packages/mcp-server/src/tools/file-history.ts
-   → Get sessions that modified a file
-   → Use db.getSessionsForFile(path, limit)
-   → Show operations + outcomes + learnings
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REFERENCE FILES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Implementation specs:  PROMPTS.md (lines 2133-2579)
-Database methods:      packages/core/src/storage/database.ts
-Formatting examples:   packages/cli/src/commands/search.ts
-                      packages/cli/src/commands/learn.ts
-Server structure:      packages/mcp-server/src/server.ts
-Architecture:          CLAUDE.md
+✅ Phase 3: Git Integration (3 commands)
+   - projects: List all tracked projects with stats
+   - sync: Push learnings to CLAUDE.md files
+   - correlate: Match sessions to git commits
+   - Smart CLAUDE.md merging with idempotency
+   - Comprehensive E2E testing (10/10 tests passed)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-QUICK COMMANDS
+WHAT WAS COMPLETED IN LAST SESSION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+Phase 3 Tasks 6-7 (Final Tasks):
+
+✅ Enhanced sync command with all Phase 3 features
+   - Added --reviewed-only option
+   - Changed --no-include-global to --no-global
+   - Improved UX with better spinner messages
+   - Cleaner code (-26 lines)
+
+✅ Comprehensive End-to-End Testing (10/10 tests passed)
+   1. Build all packages ✓
+   2. Projects command ✓
+   3. Sync dry-run (all projects) ✓
+   4. Sync dry-run (single project) ✓
+   5. Actual sync ✓
+   6. Verify CLAUDE.md content ✓
+   7. Idempotency ✓ (fixed bug during testing)
+   8. Global filter (--no-global) ✓
+   9. Git correlation ✓
+   10. Claude Code integration ✓
+
+✅ Bug Fixed During Testing
+   - Location: packages/cli/src/commands/sync.ts:126
+   - Issue: Action indicator missing for "unchanged" status
+   - Fix: Added explicit handling for 'unchanged' case
+
+✅ Documentation Updates
+   - Created E2E_TEST_RESULTS.md (443 lines)
+   - Updated README.md with Phase 3 features
+   - Updated CLAUDE.md to mark Phase 3 complete
+   - Synced 41 learnings to project CLAUDE.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CURRENT STATE & VERIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Working Directory: /Users/rafa/Documents/claude/code-agent-insights
+Git Status: Clean (all changes committed)
+Build Status: All packages build successfully
+Test Status: 10/10 tests passed
+
+Quick Verification Commands:
+```bash
 cd /Users/rafa/Documents/claude/code-agent-insights
 
-# Build all packages
+# Verify build
 pnpm build
 
-# Test a database method
-node -e "const {InsightsDatabase} = require('./packages/core/dist/index.js'); const db = new InsightsDatabase(); console.log(db.searchErrors('error', {limit: 1})); db.close();"
+# Test CLI commands
+cai --version                    # Should show 0.1.0
+cai projects                     # List all tracked projects
+cai sync --dry-run               # Preview sync for all projects
+cai correlate --since 7d         # Show session-commit correlations
 
-# Check MCP server builds
-cd packages/mcp-server && pnpm build
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-GIT STATUS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Latest commit: bceafe9 (just pushed to origin/main)
-Repository:    https://github.com/numiadata/code-agent-insights
-Branch:        main (up to date)
+# Test MCP server
+node packages/mcp-server/dist/index.js
+```
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SUCCESS CRITERIA
+KEY FILES & ARCHITECTURE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-When done, Claude Code should be able to:
-1. Call recall tool → get relevant past learnings
-2. Call remember tool → save new learnings
-3. Call similar_errors tool → find past error resolutions
-4. Call file_history tool → see file modification history
+Core Packages:
+- packages/core/          TypeScript core library and database
+- packages/cli/           CLI with 10 commands
+- packages/mcp-server/    MCP server with 4 tools
+- packages/extractor/     Python learning extraction
 
-All tools should return formatted markdown strings.
+New Phase 3 Files:
+- packages/cli/src/utils/git.ts              Git integration utilities (93 lines)
+- packages/cli/src/commands/correlate.ts     Session-commit correlation (282 lines)
+- packages/cli/src/commands/projects.ts      Projects overview (127 lines)
+- packages/cli/src/commands/sync.ts          CLAUDE.md sync (166 lines)
+- packages/cli/src/utils/claude-md.ts        CLAUDE.md merging (193 lines)
+- E2E_TEST_RESULTS.md                        Test documentation (443 lines)
+
+Key Documentation:
+- CLAUDE.md              Project architecture and phase status
+- README.md              User-facing documentation
+- PROMPTS.md             Development tasks and specs
+- MCP_TESTING_GUIDE.md   MCP server testing guide
+- E2E_TEST_RESULTS.md    Phase 3 test results
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ALL AVAILABLE COMMANDS (10 total)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Phase 1 Commands:
+  cai index          Index coding sessions
+  cai search         Full-text search
+  cai stats          Analytics and statistics
+  cai learn          Manual learning creation
+  cai recommend      Feature recommendations
+  cai clean          Database cleanup
+  cai review         Interactive learning review
+
+Phase 3 Commands:
+  cai projects       List all tracked projects
+  cai sync           Sync learnings to CLAUDE.md
+  cai correlate      Correlate sessions with git commits
+
+MCP Tools (4):
+  mcp__code-agent-insights__recall
+  mcp__code-agent-insights__remember
+  mcp__code-agent-insights__similar_errors
+  mcp__code-agent-insights__file_history
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT'S NEXT? (Options for Next Session)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Option A: Phase 4 - CI/CD Outcome Tracking
+   See PROMPTS.md for Phase 4 tasks
+   - Track test results, build outcomes, deployment status
+   - Correlate CI/CD events with sessions
+   - Measure feature delivery velocity
+
+Option B: Phase 3 Deferred Items (Lower Priority)
+   These were identified but deferred from Phase 3:
+
+   1. Commit-Triggered Sync
+      - Git hooks to auto-sync on commit
+      - Add pre-commit/post-commit hooks
+
+   2. Enhanced Correlation Algorithm
+      - Add commit message similarity scoring
+      - Use embeddings for better matching
+
+   3. Advanced Sync Features
+      - Section customization (multiple sections)
+      - Template support for different formats
+      - Conflict resolution UI
+
+   4. Project-Specific .claude/sync.config.json
+      - Per-project sync preferences
+      - Custom section names and formatting
+
+   5. Multi-Project Reporting
+      - Cross-project learning insights
+      - Team-level analytics
+
+Option C: Polish & Improvements
+   - Improve test coverage
+   - Add integration tests
+   - Performance optimizations
+   - Better error messages
+   - Add progress bars for long operations
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFERENCE: PHASE 3 TEST RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Test Environment:
+- OS: macOS 14.6.0 (Darwin 24.6.0)
+- Node.js: v22.14.0
+- pnpm: 9.15.4
+- Git: 2.42.0
+
+Test Results:
+✅ Build all packages         - All packages compiled successfully
+✅ Projects command           - 7 projects, 72 sessions, 288 learnings
+✅ Sync dry-run (all)         - All 7 projects would be synced
+✅ Sync dry-run (single)      - Shows 41 learnings
+✅ Actual sync                - Successfully synced to CLAUDE.md
+✅ Verify CLAUDE.md           - Proper formatting, markers, grouping
+✅ Idempotency               - Second sync shows "(unchanged)"
+✅ Global filter             - --no-global shows 3 vs 41 learnings
+✅ Git correlation           - 43% match rate with confidence scores
+✅ Claude Code integration   - Synced learnings available in session
+
+Performance:
+- Full rebuild: ~3 seconds
+- CLI package only: ~1.3 seconds
+- cai projects: ~150ms
+- cai sync --dry-run (all): ~280ms
+- cai sync -p .: ~320ms
+- cai correlate --since 7d: ~450ms
+
+Database:
+- insights.db: ~890 KB (72 sessions, 288 learnings)
+- CLAUDE.md (synced): ~4.2 KB (41 learnings)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KNOWN ISSUES & NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+None! All Phase 3 tests passing with no known issues.
+
+Notes:
+- MCP servers require Claude Code restart after configuration changes
+- Use --dry-run flag before running sync commands
+- Git correlation confidence threshold is 30% minimum
+- CLAUDE.md sync uses HTML comment markers for idempotency
+- Better-sqlite3 v12.5.0 required for Node v22.14.0 on macOS ARM64
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUICK START FOR NEXT SESSION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Recommended Flow:
+1. Read this file completely
+2. Review E2E_TEST_RESULTS.md for detailed test info
+3. Check PROMPTS.md Phase 4 or deferred Phase 3 items
+4. Verify build: `pnpm build`
+5. Test core functionality: `cai projects && cai sync --dry-run`
+6. Decide on next phase and implement
+
+Key Commands:
+```bash
+cd /Users/rafa/Documents/claude/code-agent-insights
+git status                       # Should be clean
+git log -5 --oneline             # See recent commits
+pnpm build                       # Build all packages
+cai --help                       # See all commands
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTACT & RESOURCES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GitHub: https://github.com/numiadata/code-agent-insights
+License: MIT
+Tech Stack: TypeScript, Python, SQLite, pnpm, MCP
+
+For detailed architecture, see CLAUDE.md
+For development tasks, see PROMPTS.md
+For test results, see E2E_TEST_RESULTS.md
 
 ═══════════════════════════════════════════════════════════════════════
-START WITH: Read NEXT_SESSION.md then implement recall tool (Task 3)
+Phase 3 Complete! Ready for Phase 4 or polish work.
+All tests passing. All code committed and pushed.
 ═══════════════════════════════════════════════════════════════════════
