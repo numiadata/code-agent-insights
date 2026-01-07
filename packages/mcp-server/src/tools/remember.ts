@@ -55,14 +55,27 @@ export async function rememberTool(
     return '⚠️ Error: Too many tags (max 20)';
   }
 
+  // Determine project path based on scope
+  const scope = args.scope || 'project';
+  let projectPath: string | undefined;
+
+  if (scope === 'project' || scope === 'file') {
+    // For project and file scopes, use current working directory
+    projectPath = process.cwd();
+  } else if (scope === 'language') {
+    // For language scope, still associate with current project for organization
+    projectPath = process.cwd();
+  }
+  // For global scope, leave projectPath as undefined (applies everywhere)
+
   // Create learning object
   const learning: Learning = {
     id: uuidv4(),
     sessionId: undefined, // MCP sessions don't have session IDs
-    projectPath: undefined, // Could be detected from cwd in the future
+    projectPath,
     content,
     type: args.type,
-    scope: args.scope || 'project',
+    scope,
     confidence: 0.9, // High confidence for explicit learnings
     tags: args.tags || [],
     relatedFiles: [],
