@@ -4,24 +4,15 @@ import ora from 'ora';
 import * as path from 'path';
 import { InsightsDatabase } from '@code-agent-insights/core';
 import { formatLearningsSection, mergeIntoClaudeMd } from '../utils/claude-md';
+import { getGitInfo } from '../utils/git';
 
 interface SyncOptions {
   project?: string;
   dryRun?: boolean;
   section?: string;
-  includeGlobal?: boolean;
+  global?: boolean;
   minConfidence?: number;
-}
-
-function getUniqueProjects(db: InsightsDatabase): string[] {
-  const rows = db.db.prepare(`
-    SELECT DISTINCT project_path
-    FROM sessions
-    WHERE project_path IS NOT NULL AND project_path != ''
-    ORDER BY project_path
-  `).all() as Array<{ project_path: string }>;
-
-  return rows.map((r) => r.project_path);
+  reviewedOnly?: boolean;
 }
 
 export const syncCommand = new Command('sync')
@@ -29,162 +20,145 @@ export const syncCommand = new Command('sync')
   .option('-p, --project <path>', 'Sync specific project only')
   .option('--dry-run', 'Show what would be synced without modifying files')
   .option('--section <name>', 'Section name in CLAUDE.md', 'Learnings from Past Sessions')
-  .option('--no-include-global', 'Exclude global-scoped learnings')
+  .option('--no-global', 'Exclude global-scoped learnings')
   .option('--min-confidence <number>', 'Minimum confidence threshold', '0.7')
+  .option('--reviewed-only', 'Only include reviewed learnings')
   .addHelpText('after', `
 Examples:
   $ cai sync                          Sync all projects
   $ cai sync --dry-run                Preview changes without writing
   $ cai sync -p /path/to/project      Sync specific project only
   $ cai sync --min-confidence 0.9     Only high-confidence learnings
-  $ cai sync --no-include-global      Exclude global learnings`)
+  $ cai sync --no-global              Exclude global learnings
+  $ cai sync --reviewed-only          Only reviewed/manual learnings`)
   .action(async (options: SyncOptions) => {
     const db = new InsightsDatabase();
+    const spinner = ora('Loading projects...').start();
 
     try {
-      // Parse options
-      const minConfidence = parseFloat(options.minConfidence?.toString() || '0.7');
-      const includeGlobal = options.includeGlobal !== false;
-      const sectionName = options.section || 'Learnings from Past Sessions';
+      // Get projects to sync
+      let projects: Array<{ path: string; name: string }>;
 
-      // Determine which projects to sync
-      let projectPaths: string[];
       if (options.project) {
         // Resolve to absolute path
-        const absolutePath = path.resolve(options.project);
-        projectPaths = [absolutePath];
+        const projectPath = path.resolve(options.project);
+        projects = [{ path: projectPath, name: path.basename(projectPath) }];
+        spinner.succeed(`Found 1 project`);
       } else {
-        // Get all projects
-        const spinner = ora('Discovering projects...').start();
-        projectPaths = getUniqueProjects(db);
-        spinner.succeed(`Found ${projectPaths.length} projects`);
+        const allProjects = db.getAllProjects();
+        projects = allProjects.map(p => ({ path: p.path, name: p.name }));
+        spinner.succeed(`Found ${projects.length} projects`);
       }
 
-      if (projectPaths.length === 0) {
-        console.log(chalk.yellow('No projects found to sync.'));
+      if (projects.length === 0) {
+        console.log(chalk.yellow('\nNo projects found. Run `cai index` first.'));
         return;
       }
 
-      // Sync each project
+      if (options.dryRun) {
+        console.log(chalk.blue('\n🔍 Dry run mode - no files will be modified\n'));
+      }
+
       const results: Array<{
-        path: string;
-        success: boolean;
-        action: 'created' | 'updated' | 'unchanged' | 'skipped';
-        learningCount: number;
-        error?: string;
+        project: string;
+        status: 'synced' | 'skipped' | 'error';
+        learnings: number;
+        action?: string;
+        message?: string;
       }> = [];
 
-      console.log(chalk.blue(`\n${options.dryRun ? 'Preview' : 'Syncing'} ${projectPaths.length} project${projectPaths.length > 1 ? 's' : ''}...\n`));
+      for (const project of projects) {
+        // Get learnings for this project
+        const learnings = db.getLearningsForProject(project.path, {
+          includeGlobal: options.global !== false,
+          minConfidence: parseFloat(options.minConfidence || '0.7'),
+          onlyReviewed: options.reviewedOnly || false
+        });
 
-      for (const projectPath of projectPaths) {
-        try {
-          // Get learnings for this project
-          const learnings = db.getLearningsForProject(projectPath, {
-            includeGlobal,
-            minConfidence,
-            onlyReviewed: true,
-            limit: 100
-          });
-
-          // Skip if no learnings
-          if (learnings.length === 0) {
-            results.push({
-              path: projectPath,
-              success: true,
-              action: 'skipped',
-              learningCount: 0
-            });
-            console.log(chalk.dim(`  ⊘ ${path.basename(projectPath)}: No learnings`));
-            continue;
-          }
-
-          // Format learnings section
-          const learningsSection = formatLearningsSection(learnings, {
-            sectionName
-          });
-
-          // Merge into CLAUDE.md
-          const result = mergeIntoClaudeMd(projectPath, learningsSection, {
-            dryRun: options.dryRun
-          });
-
+        if (learnings.length === 0) {
           results.push({
-            path: projectPath,
-            success: result.success,
-            action: result.action,
-            learningCount: learnings.length
+            project: project.name,
+            status: 'skipped',
+            learnings: 0,
+            message: 'No learnings'
           });
+          continue;
+        }
 
-          // Display result
-          const projectName = path.basename(projectPath);
-          if (result.action === 'created') {
-            console.log(chalk.green(`  ✓ ${projectName}: Created (${learnings.length} learnings)`));
-          } else if (result.action === 'updated') {
-            console.log(chalk.green(`  ✓ ${projectName}: Updated (${learnings.length} learnings)`));
-          } else if (result.action === 'unchanged') {
-            console.log(chalk.dim(`  ⊘ ${projectName}: Unchanged (${learnings.length} learnings)`));
-          }
+        // Format the section
+        const section = formatLearningsSection(learnings, {
+          sectionName: options.section || 'Learnings from Past Sessions'
+        });
 
-          // Show diff in dry-run mode
-          if (options.dryRun && result.diff) {
-            console.log(chalk.dim('    Preview:'));
-            const diffLines = result.diff.split('\n').slice(0, 5);
-            diffLines.forEach(line => {
-              console.log(chalk.dim(`    ${line}`));
-            });
-            if (result.diff.split('\n').length > 5) {
-              console.log(chalk.dim('    ...'));
-            }
-          }
-        } catch (error) {
+        // Merge into CLAUDE.md
+        const mergeResult = mergeIntoClaudeMd(project.path, section, {
+          dryRun: options.dryRun
+        });
+
+        if (mergeResult.success) {
           results.push({
-            path: projectPath,
-            success: false,
-            action: 'skipped',
-            learningCount: 0,
-            error: (error as Error).message
+            project: project.name,
+            status: 'synced',
+            learnings: learnings.length,
+            action: mergeResult.action,
+            message: options.dryRun ? mergeResult.diff : undefined
           });
-          console.log(chalk.red(`  ✗ ${path.basename(projectPath)}: Error - ${(error as Error).message}`));
+        } else {
+          results.push({
+            project: project.name,
+            status: 'error',
+            learnings: learnings.length,
+            message: mergeResult.diff
+          });
         }
       }
 
       // Summary
-      const successful = results.filter(r => r.success && r.action !== 'skipped' && r.action !== 'unchanged');
-      const unchanged = results.filter(r => r.action === 'unchanged');
-      const skipped = results.filter(r => r.action === 'skipped');
-      const failed = results.filter(r => !r.success);
+      console.log(chalk.bold('\n📋 Sync Summary\n'));
 
-      console.log(chalk.blue('\n' + (options.dryRun ? 'Preview' : 'Sync') + ' complete:'));
+      const synced = results.filter(r => r.status === 'synced');
+      const skipped = results.filter(r => r.status === 'skipped');
+      const errors = results.filter(r => r.status === 'error');
 
-      if (successful.length > 0) {
-        console.log(chalk.green(`  ✓ ${successful.length} project${successful.length > 1 ? 's' : ''} ${options.dryRun ? 'would be ' : ''}${successful.filter(r => r.action === 'created').length > 0 ? 'created/updated' : 'updated'}`));
-      }
-
-      if (unchanged.length > 0) {
-        console.log(chalk.dim(`  ⊘ ${unchanged.length} project${unchanged.length > 1 ? 's' : ''} unchanged`));
-      }
-
-      if (skipped.length > 0) {
-        console.log(chalk.yellow(`  ⚠ ${skipped.length} project${skipped.length > 1 ? 's' : ''} skipped (no learnings)`));
-      }
-
-      if (failed.length > 0) {
-        console.log(chalk.red(`  ✗ ${failed.length} project${failed.length > 1 ? 's' : ''} failed`));
-      }
-
-      // Show projects synced
-      if (successful.length > 0) {
-        console.log(chalk.blue('\nProjects synced:'));
-        for (const result of successful) {
-          const projectName = path.basename(result.path);
-          console.log(chalk.green(`  ${projectName}: ${result.learningCount} learnings`));
+      if (synced.length > 0) {
+        console.log(chalk.green(`✓ ${synced.length} project${synced.length > 1 ? 's' : ''} ${options.dryRun ? 'would be ' : ''}synced:`));
+        for (const r of synced) {
+          const action = r.action === 'created' ? '(created)' : r.action === 'updated' ? '(updated)' : '';
+          console.log(`    ${r.project}: ${r.learnings} learnings ${action}`);
+          if (options.dryRun && r.message) {
+            console.log(chalk.dim(`    ${r.message.split('\n').slice(0, 5).join('\n    ')}`));
+            if (r.message.split('\n').length > 5) {
+              console.log(chalk.dim('    ...'));
+            }
+          }
         }
       }
 
-      // Dry-run reminder
-      if (options.dryRun && successful.length > 0) {
-        console.log(chalk.yellow('\n💡 This was a dry-run. Run without --dry-run to apply changes.'));
+      if (skipped.length > 0) {
+        console.log(chalk.yellow(`\n⚠ ${skipped.length} project${skipped.length > 1 ? 's' : ''} skipped:`));
+        for (const r of skipped) {
+          console.log(`    ${r.project}: ${r.message}`);
+        }
       }
+
+      if (errors.length > 0) {
+        console.log(chalk.red(`\n✗ ${errors.length} project${errors.length > 1 ? 's' : ''} failed:`));
+        for (const r of errors) {
+          console.log(`    ${r.project}: ${r.message}`);
+        }
+      }
+
+      // Total
+      const totalLearnings = results.reduce((sum, r) => sum + r.learnings, 0);
+      console.log(chalk.dim(`\nTotal: ${totalLearnings} learnings across ${results.length} projects`));
+
+      // Dry-run reminder
+      if (options.dryRun && synced.length > 0) {
+        console.log(chalk.yellow('\n💡 Run without --dry-run to apply changes.'));
+      }
+    } catch (error) {
+      spinner.fail('Sync failed');
+      console.error(chalk.red(`Error: ${(error as Error).message}`));
     } finally {
       db.close();
     }
