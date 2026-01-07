@@ -15,7 +15,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts src/lib.ts --format cjs --dts",
-    "dev": "tsup src/index.ts src/lib.ts --format cjs --watch"
+    "dev": "tsup src/index.ts src/lib.ts --format cjs --watch",
+    "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
     "@code-agent-insights/core": "workspace:*",

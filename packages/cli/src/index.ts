@@ -11,6 +11,7 @@ import { reviewCommand } from './commands/review';
 import { syncCommand } from './commands/sync';
 import { projectsCommand } from './commands/projects';
 import { correlateCommand } from './commands/correlate';
+import { setupMcpCommand } from './commands/setup-mcp';
 
 const program = new Command();
 
@@ -30,5 +31,6 @@ program.addCommand(reviewCommand);
 program.addCommand(syncCommand);
 program.addCommand(projectsCommand);
 program.addCommand(correlateCommand);
+program.addCommand(setupMcpCommand);
 
 program.parse();

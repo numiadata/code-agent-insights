@@ -65,6 +65,23 @@ Code Agent Insights helps developers build persistent memory and understanding a
 
 ## Installation
 
+### For Users (Recommended)
+
+```bash
+# Install globally via npm
+npm install -g code-agent-insights
+
+# Or via pnpm
+pnpm install -g code-agent-insights
+
+# Setup MCP server for Claude Code
+cai setup-mcp
+
+# Restart Claude Code
+```
+
+### For Development
+
 ```bash
 # Clone the repository
 git clone https://github.com/numiadata/code-agent-insights.git
@@ -79,6 +96,9 @@ pnpm build
 # Link CLI globally
 cd packages/cli
 pnpm link --global
+
+# Setup MCP server
+cai setup-mcp
 ```
 
 ### Python Extractor (Optional)
@@ -119,32 +139,32 @@ cai clean --duplicates --dry-run
 
 ## MCP Server Setup
 
-The MCP server provides in-session memory tools for Claude Code.
+The MCP server provides in-session memory tools for Claude Code:
+- **recall** - Search past learnings and sessions during coding
+- **remember** - Save learnings in real-time during sessions
+- **similar_errors** - Find past error resolutions
+- **file_history** - Get session history for files
 
-### Configuration
-
-Add to your Claude Code MCP configuration:
+### Automatic Setup (Recommended)
 
 ```bash
-# Using the CLI (recommended)
-claude mcp add --transport stdio code-agent-insights -- node /path/to/code-agent-insights/packages/mcp-server/dist/index.js
+# After installing code-agent-insights, run:
+cai setup-mcp
 
-# Or manually add to ~/.claude.json
+# Then restart Claude Code
 ```
 
-Example `.mcp.json` in project root:
-```json
-{
-  "mcpServers": {
-    "code-agent-insights": {
-      "command": "node",
-      "args": ["/absolute/path/to/packages/mcp-server/dist/index.js"]
-    }
-  }
-}
+This automatically configures the MCP server globally for all your Claude Code sessions.
+
+### Manual Setup
+
+If you prefer manual configuration, add to `~/.claude.json`:
+
+```bash
+claude mcp add --transport stdio --scope user code-agent-insights -- cai-mcp
 ```
 
-**Important:** Restart Claude Code after configuration changes.
+**Important:** Always restart Claude Code after configuration changes for the tools to become available.
 
 ### MCP Tools
 

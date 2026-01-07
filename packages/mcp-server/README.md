@@ -28,46 +28,62 @@ Model Context Protocol server that enables Claude Code to query past sessions an
 
 ## Installation
 
-1. Build the MCP server:
+### Automatic Setup (Recommended)
+
+If you have `code-agent-insights` installed globally:
+
 ```bash
-cd packages/mcp-server
-pnpm build
+# Install the package
+npm install -g code-agent-insights
+
+# Setup MCP server automatically
+cai setup-mcp
+
+# Restart Claude Code
 ```
 
-2. Configure Claude Code to use the server.
+The `setup-mcp` command will:
+- Detect if Claude Code is installed
+- Find the `cai-mcp` binary path
+- Add the MCP server to your global `~/.claude.json` configuration
+- Provide next steps
 
-## Configuration
+### Manual Setup
 
-### Claude Code
+If you prefer manual configuration:
 
-Add to your Claude Code MCP configuration (usually in `~/.claude/mcp_config.json` or similar):
+```bash
+# Add via Claude CLI
+claude mcp add --transport stdio --scope user code-agent-insights -- cai-mcp
+
+# Then restart Claude Code
+```
+
+Or manually edit `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "code-agent-insights": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/code-agent-insights/packages/mcp-server/dist/index.js"
-      ],
-      "env": {}
-    }
-  }
-}
-```
-
-Or use the global bin command if installed:
-
-```json
-{
-  "mcpServers": {
-    "code-agent-insights": {
+      "type": "stdio",
       "command": "cai-mcp",
       "args": [],
       "env": {}
     }
   }
 }
+```
+
+### Development Setup
+
+When developing locally:
+
+```bash
+cd packages/mcp-server
+pnpm build
+
+# Add with absolute path
+claude mcp add --transport stdio --scope user code-agent-insights -- node /absolute/path/to/packages/mcp-server/dist/index.js
 ```
 
 ## Usage Examples
