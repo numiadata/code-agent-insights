@@ -1061,6 +1061,110 @@ export class InsightsDatabase {
     return this.db.prepare(sql).all(sessionId).map(row => this.rowToLearning(row));
   }
 
+  getLearningsForProject(projectPath: string, options: {
+    includeGlobal?: boolean;
+    minConfidence?: number;
+    onlyReviewed?: boolean;
+    limit?: number;
+  } = {}): Learning[] {
+    const includeGlobal = options.includeGlobal ?? true;
+    const minConfidence = options.minConfidence ?? 0.7;
+    const onlyReviewed = options.onlyReviewed ?? false;
+    const limit = options.limit ?? 100;
+
+    let sql = `
+      SELECT * FROM learnings
+      WHERE confidence >= ?
+    `;
+    const params: any[] = [minConfidence];
+
+    // Project filter
+    if (includeGlobal) {
+      sql += ` AND (project_path = ? OR scope = 'global')`;
+    } else {
+      sql += ` AND project_path = ? AND scope != 'global'`;
+    }
+    params.push(projectPath);
+
+    // Review filter
+    if (onlyReviewed) {
+      sql += ` AND (reviewed = 1 OR source = 'explicit')`;
+    }
+
+    sql += ` ORDER BY type, created_at DESC LIMIT ?`;
+    params.push(limit);
+
+    return this.db.prepare(sql).all(...params).map(row => this.rowToLearning(row));
+  }
+
+  getProjectStats(projectPath: string): {
+    sessionCount: number;
+    learningCount: number;
+    errorCount: number;
+    lastSessionDate: Date | null;
+  } {
+    const stats = this.db.prepare(`
+      SELECT
+        COUNT(DISTINCT s.id) as session_count,
+        MAX(s.started_at) as last_session
+      FROM sessions s
+      WHERE s.project_path = ?
+    `).get(projectPath) as any;
+
+    const learningCount = this.db.prepare(`
+      SELECT COUNT(*) as count FROM learnings
+      WHERE project_path = ? OR scope = 'global'
+    `).get(projectPath) as any;
+
+    const errorCount = this.db.prepare(`
+      SELECT COUNT(*) as count FROM errors e
+      JOIN sessions s ON e.session_id = s.id
+      WHERE s.project_path = ?
+    `).get(projectPath) as any;
+
+    return {
+      sessionCount: stats.session_count || 0,
+      learningCount: learningCount.count || 0,
+      errorCount: errorCount.count || 0,
+      lastSessionDate: stats.last_session ? new Date(stats.last_session) : null
+    };
+  }
+
+  getAllProjects(): Array<{
+    path: string;
+    name: string;
+    sessionCount: number;
+    learningCount: number;
+    lastSessionDate: Date | null;
+  }> {
+    const rows = this.db.prepare(`
+      SELECT
+        s.project_path,
+        s.project_name,
+        COUNT(DISTINCT s.id) as session_count,
+        MAX(s.started_at) as last_session
+      FROM sessions s
+      WHERE s.project_path IS NOT NULL AND s.project_path != ''
+      GROUP BY s.project_path
+      ORDER BY last_session DESC
+    `).all() as any[];
+
+    return rows.map(row => {
+      const learningCount = this.db.prepare(`
+        SELECT COUNT(*) as count FROM learnings
+        WHERE project_path = ? OR scope = 'global'
+      `).get(row.project_path) as any;
+
+      return {
+        path: row.project_path,
+        name: row.project_name || path.basename(row.project_path),
+        sessionCount: row.session_count,
+        learningCount: learningCount.count || 0,
+        lastSessionDate: row.last_session ? new Date(row.last_session) : null
+      };
+    });
+  }
+
   // ============================================================================
   // Stats methods
   // ============================================================================
