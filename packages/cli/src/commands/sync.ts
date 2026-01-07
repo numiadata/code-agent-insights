@@ -123,7 +123,9 @@ Examples:
       if (synced.length > 0) {
         console.log(chalk.green(`✓ ${synced.length} project${synced.length > 1 ? 's' : ''} ${options.dryRun ? 'would be ' : ''}synced:`));
         for (const r of synced) {
-          const action = r.action === 'created' ? '(created)' : r.action === 'updated' ? '(updated)' : '';
+          const action = r.action === 'created' ? '(created)' :
+                        r.action === 'updated' ? '(updated)' :
+                        r.action === 'unchanged' ? '(unchanged)' : '';
           console.log(`    ${r.project}: ${r.learnings} learnings ${action}`);
           if (options.dryRun && r.message) {
             console.log(chalk.dim(`    ${r.message.split('\n').slice(0, 5).join('\n    ')}`));

@@ -43,12 +43,19 @@ Code Agent Insights helps developers build persistent memory and understanding a
 - Duplicate detection and cleanup
 - Low-confidence filtering
 
-### 🔌 MCP Server (New!)
+### 🔌 MCP Server
 - **recall** - Search past learnings and sessions during coding
 - **remember** - Save learnings in real-time during sessions
 - **similar_errors** - Find past error resolutions
 - **file_history** - Get session history for files
 - Seamless integration with Claude Code
+
+### 🔀 Git Integration (New!)
+- **Session-commit correlation** - Match sessions to commits with confidence scoring
+- **Project overview** - List all tracked projects with stats
+- **CLAUDE.md sync** - Push learnings to project documentation
+- Smart merging with idempotency and dry-run mode
+- Filter by global/project scope and confidence levels
 
 ### 🛠️ Robust Parser
 - Handles malformed JSONL/JSON gracefully
@@ -225,6 +232,37 @@ cai recommend
 cai recommend -p ./my-project
 ```
 
+### `cai projects`
+List all tracked projects
+
+```bash
+cai projects                    # Show all projects with stats
+cai projects --json             # JSON output for scripting
+cai projects --with-learnings   # Include learning counts
+```
+
+### `cai sync`
+Sync learnings to project CLAUDE.md files
+
+```bash
+cai sync                          # Sync all projects
+cai sync --dry-run                # Preview changes
+cai sync -p /path/to/project      # Sync specific project
+cai sync --min-confidence 0.9     # Only high-confidence learnings
+cai sync --no-global              # Exclude global learnings
+cai sync --reviewed-only          # Only reviewed/manual learnings
+```
+
+### `cai correlate`
+Correlate coding sessions with git commits
+
+```bash
+cai correlate                     # Analyze current project (last 30 days)
+cai correlate -p /path/to/project # Analyze specific project
+cai correlate --since 7d          # Last 7 days only
+cai correlate --since 2025-01-01  # Since specific date
+```
+
 ## Architecture
 
 ```
@@ -317,7 +355,7 @@ ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 
 - [x] **Phase 1**: Core + CLI with search, stats, and feature tracking
 - [x] **Phase 2**: MCP server for in-session recall/remember (4 tools: recall, remember, similar_errors, file_history)
-- [ ] **Phase 3**: Git commit correlation
+- [x] **Phase 3**: Git integration, project management, and CLAUDE.md sync (3 new commands: projects, sync, correlate)
 - [ ] **Phase 4**: CI/CD outcome tracking
 - [ ] **Phase 5**: Team sync and manager dashboards
 
