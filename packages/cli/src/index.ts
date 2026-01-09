@@ -12,6 +12,9 @@ import { syncCommand } from './commands/sync';
 import { projectsCommand } from './commands/projects';
 import { correlateCommand } from './commands/correlate';
 import { setupMcpCommand } from './commands/setup-mcp';
+import { summarizeCommand } from './commands/summarize';
+import { configCommand } from './commands/config';
+import { hooksCommand } from './commands/hooks';
 
 const program = new Command();
 
@@ -32,5 +35,8 @@ program.addCommand(syncCommand);
 program.addCommand(projectsCommand);
 program.addCommand(correlateCommand);
 program.addCommand(setupMcpCommand);
+program.addCommand(summarizeCommand);
+program.addCommand(configCommand);
+program.addCommand(hooksCommand);
 
 program.parse();

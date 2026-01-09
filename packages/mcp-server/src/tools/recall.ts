@@ -1,11 +1,203 @@
 /**
  * Recall Tool
  *
- * Search learnings and sessions for relevant context
+ * Search learnings, sessions, and summaries for relevant context
  */
 
-import type { InsightsDatabase, Learning } from '@code-agent-insights/core';
+import type { InsightsDatabase } from '@code-agent-insights/core';
+import * as path from 'path';
 
+export interface RecallParams {
+  query: string;
+  scope?: 'project' | 'global' | 'all';
+  limit?: number;
+  include?: ('learnings' | 'sessions' | 'summaries')[];
+}
+
+export interface RecallResult {
+  learnings: Array<{
+    type: string;
+    content: string;
+    tags: string[];
+    confidence: number;
+    projectPath?: string;
+  }>;
+  sessions: Array<{
+    id: string;
+    projectName: string;
+    date: string;
+    summary?: string;
+    outcome: string;
+    workDone?: string[];
+    filesChanged?: string[];
+  }>;
+  totalFound: number;
+  error?: string;
+}
+
+function getCurrentProjectPath(): string | undefined {
+  // Get current working directory as project path
+  const cwd = process.cwd();
+  return cwd;
+}
+
+export async function recall(
+  db: InsightsDatabase,
+  params: RecallParams
+): Promise<RecallResult> {
+  // Validation
+  if (!params.query || typeof params.query !== 'string') {
+    return { learnings: [], sessions: [], totalFound: 0, error: 'Query required' };
+  }
+
+  const query = params.query.trim();
+  if (query.length === 0) {
+    return { learnings: [], sessions: [], totalFound: 0, error: 'Query cannot be empty' };
+  }
+
+  const limit = Math.min(Math.max(params.limit || 5, 1), 100);
+  const include = params.include || ['learnings', 'sessions', 'summaries'];
+
+  const result: RecallResult = {
+    learnings: [],
+    sessions: [],
+    totalFound: 0,
+  };
+
+  // Search learnings
+  if (include.includes('learnings')) {
+    const learnings = db.searchLearnings(query, {
+      limit,
+      projectPath: params.scope === 'project' ? getCurrentProjectPath() : undefined,
+    });
+
+    result.learnings = learnings.map((l) => ({
+      type: l.type,
+      content: l.content,
+      tags: l.tags || [],
+      confidence: l.confidence,
+      projectPath: l.projectPath,
+    }));
+  }
+
+  // Search session summaries
+  if (include.includes('sessions') || include.includes('summaries')) {
+    const summaries = db.searchSessionSummaries(query, {
+      limit,
+      projectPath: params.scope === 'project' ? getCurrentProjectPath() : undefined,
+    });
+
+    for (const summary of summaries) {
+      const session = db.getSession(summary.sessionId);
+      if (session) {
+        result.sessions.push({
+          id: session.id,
+          projectName: session.projectName || 'Unknown',
+          date: session.startedAt.toLocaleDateString(),
+          summary: summary.summary,
+          outcome: session.outcome,
+          workDone: summary.workDone,
+          filesChanged: summary.filesChanged,
+        });
+      }
+    }
+  }
+
+  // Also search events for sessions without summaries
+  if (include.includes('sessions')) {
+    const events = db.searchEvents(query, { limit });
+    const sessionIds = new Set(result.sessions.map((s) => s.id));
+
+    // Get unique sessions from event results
+    const eventSessionIds = [...new Set(events.map((e) => e.sessionId))];
+
+    for (const sessionId of eventSessionIds) {
+      if (sessionIds.has(sessionId)) continue; // Already have this session
+
+      const session = db.getSession(sessionId);
+      if (!session) continue;
+
+      // Check scope
+      if (params.scope === 'project') {
+        const projectPath = getCurrentProjectPath();
+        if (session.projectPath !== projectPath) continue;
+      }
+
+      result.sessions.push({
+        id: session.id,
+        projectName: session.projectName || 'Unknown',
+        date: session.startedAt.toLocaleDateString(),
+        summary: session.summary,
+        outcome: session.outcome,
+      });
+
+      if (result.sessions.length >= limit) break;
+    }
+  }
+
+  result.totalFound = result.learnings.length + result.sessions.length;
+
+  return result;
+}
+
+export function formatRecallResponse(result: RecallResult): string {
+  if (result.error) {
+    return `⚠️ Search error: ${result.error}`;
+  }
+
+  const parts: string[] = [];
+
+  // Sessions with summaries first (most useful)
+  if (result.sessions.length > 0) {
+    parts.push('## Relevant Past Sessions\n');
+
+    for (const s of result.sessions) {
+      parts.push(`### ${s.projectName} (${s.date}) — ${s.outcome}`);
+
+      if (s.summary) {
+        parts.push(s.summary);
+      }
+
+      if (s.workDone && s.workDone.length > 0) {
+        parts.push('\n**Work done:**');
+        for (const work of s.workDone.slice(0, 5)) {
+          parts.push(`- ${work}`);
+        }
+      }
+
+      if (s.filesChanged && s.filesChanged.length > 0) {
+        parts.push(
+          `\n**Files:** ${s.filesChanged.slice(0, 5).join(', ')}${
+            s.filesChanged.length > 5 ? '...' : ''
+          }`
+        );
+      }
+
+      parts.push('');
+    }
+  }
+
+  // Learnings
+  if (result.learnings.length > 0) {
+    parts.push('## Relevant Learnings\n');
+
+    for (const l of result.learnings) {
+      parts.push(`**[${l.type}]** ${l.content}`);
+      if (l.tags.length > 0) {
+        parts.push(`_Tags: ${l.tags.join(', ')}_`);
+      }
+      parts.push('');
+    }
+  }
+
+  if (result.totalFound === 0) {
+    parts.push('No relevant past context found for this query.');
+  }
+
+  return parts.join('\n');
+}
+
+// Legacy function for backwards compatibility
 export async function recallTool(
   db: InsightsDatabase,
   args: {
@@ -14,105 +206,6 @@ export async function recallTool(
     limit?: number;
   }
 ): Promise<string> {
-  // Validate input
-  if (!args.query || typeof args.query !== 'string') {
-    return '⚠️ Search error: Query parameter is required and must be a string';
-  }
-
-  const query = args.query.trim();
-  if (query.length === 0) {
-    return '⚠️ Search error: Query cannot be empty';
-  }
-
-  if (query.length > 500) {
-    return '⚠️ Search error: Query too long (max 500 characters)';
-  }
-
-  const limit = args.limit || 5;
-  const scope = args.scope || 'all';
-
-  // Validate limit
-  if (limit < 1 || limit > 100) {
-    return '⚠️ Search error: Limit must be between 1 and 100';
-  }
-
-  // Search learnings using FTS
-  const allLearnings = db.searchLearnings(query, { limit: limit * 2 });
-
-  // Filter by scope if specified
-  let learnings = allLearnings;
-  if (scope === 'global') {
-    learnings = allLearnings.filter((l) => l.scope === 'global');
-  } else if (scope === 'project') {
-    learnings = allLearnings.filter((l) => l.scope === 'project');
-  }
-
-  // Take only the limit we need
-  learnings = learnings.slice(0, limit);
-
-  if (learnings.length === 0) {
-    return `No learnings found for query: "${args.query}"${
-      scope !== 'all' ? ` (scope: ${scope})` : ''
-    }`;
-  }
-
-  // Group learnings by type
-  const grouped = new Map<string, Learning[]>();
-  for (const learning of learnings) {
-    const type = learning.type;
-    if (!grouped.has(type)) {
-      grouped.set(type, []);
-    }
-    grouped.get(type)!.push(learning);
-  }
-
-  // Format as markdown
-  let output = `# Recalled Learnings (${learnings.length})\n\n`;
-  output += `Query: "${args.query}"`;
-  if (scope !== 'all') {
-    output += ` • Scope: ${scope}`;
-  }
-  output += '\n\n';
-
-  // Sort groups by type for consistent output
-  const sortedTypes = Array.from(grouped.keys()).sort();
-
-  for (const type of sortedTypes) {
-    const items = grouped.get(type)!;
-    output += `## ${type.charAt(0).toUpperCase() + type.slice(1)}s (${items.length})\n\n`;
-
-    for (const learning of items) {
-      output += `### ${learning.content}\n\n`;
-
-      // Metadata
-      const metadata: string[] = [];
-      metadata.push(`**Confidence:** ${(learning.confidence * 100).toFixed(0)}%`);
-      metadata.push(`**Scope:** ${learning.scope}`);
-
-      if (learning.projectPath) {
-        metadata.push(`**Project:** ${learning.projectPath}`);
-      }
-
-      if (learning.tags.length > 0) {
-        metadata.push(`**Tags:** ${learning.tags.join(', ')}`);
-      }
-
-      if (learning.relatedFiles.length > 0) {
-        const files = learning.relatedFiles.slice(0, 3);
-        metadata.push(`**Files:** ${files.join(', ')}${learning.relatedFiles.length > 3 ? '...' : ''}`);
-      }
-
-      output += metadata.join(' • ') + '\n\n';
-
-      // Applied count if relevant
-      if (learning.appliedCount > 0) {
-        output += `_Applied ${learning.appliedCount} time${learning.appliedCount > 1 ? 's' : ''}_\n\n`;
-      }
-    }
-  }
-
-  output += '---\n\n';
-  output += `_Tip: Use the \`remember\` tool to save new learnings during this session._`;
-
-  return output;
+  const result = await recall(db, args);
+  return formatRecallResponse(result);
 }

@@ -8,6 +8,32 @@ interface SearchOptions {
   limit?: string;
   summarize?: boolean;
   project?: string;
+  since?: string;
+}
+
+function parseRelativeDate(since: string): Date {
+  const now = new Date();
+  const match = since.match(/^(\d+)([dwm])$/);
+
+  if (!match) {
+    const date = new Date(since);
+    if (!isNaN(date.getTime())) return date;
+    throw new Error(`Invalid date format: ${since}`);
+  }
+
+  const [, num, unit] = match;
+  const n = parseInt(num, 10);
+
+  switch (unit) {
+    case 'd':
+      return new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+    case 'w':
+      return new Date(now.getTime() - n * 7 * 24 * 60 * 60 * 1000);
+    case 'm':
+      return new Date(now.getTime() - n * 30 * 24 * 60 * 60 * 1000);
+    default:
+      throw new Error(`Invalid date unit: ${unit}`);
+  }
 }
 
 export const searchCommand = new Command('search')
@@ -16,6 +42,7 @@ export const searchCommand = new Command('search')
   .option('-n, --limit <number>', 'Limit number of results', '10')
   .option('--summarize', 'Generate AI summary of findings')
   .option('-p, --project <path>', 'Filter by project path')
+  .option('--since <date>', 'Only results after date (YYYY-MM-DD, 7d, 2w, 1m)')
   .action(async (query: string, options: SearchOptions) => {
     const db = new InsightsDatabase();
 
@@ -23,23 +50,49 @@ export const searchCommand = new Command('search')
       // 2. Parse limit as integer
       const limit = parseInt(options.limit || '10', 10);
 
+      // Parse since date if provided
+      let sinceDate: Date | null = null;
+      if (options.since) {
+        try {
+          sinceDate = parseRelativeDate(options.since);
+          console.log(
+            chalk.dim(
+              `Filtering to results after ${sinceDate.toLocaleDateString()}\n`
+            )
+          );
+        } catch (e) {
+          console.log(chalk.red(`Invalid --since date: ${options.since}`));
+          return;
+        }
+      }
+
       // 3. Log blue: "Searching for: "{query}""
       console.log(chalk.blue(`Searching for: "${query}"\n`));
 
       // 4. Search learnings
-      const learnings = db.searchLearnings(query, {
+      let learnings = db.searchLearnings(query, {
         projectPath: options.project,
         limit,
       });
+
+      // Filter learnings by date
+      if (sinceDate) {
+        learnings = learnings.filter((l) => l.createdAt >= sinceDate);
+      }
 
       // 5. Search events
       const events = db.searchEvents(query, { limit });
 
       // 6. Get unique sessions from events
       const sessionIds = [...new Set(events.map((e) => e.sessionId))];
-      const sessions = sessionIds
+      let sessions = sessionIds
         .map((id) => db.getSession(id))
         .filter((s): s is Session => s !== null);
+
+      // Filter sessions by date
+      if (sinceDate) {
+        sessions = sessions.filter((s) => s.startedAt >= sinceDate);
+      }
 
       // 7. Display learnings if any
       if (learnings.length > 0) {

@@ -193,3 +193,17 @@ export const SessionModesSchema = z.object({
   skillsUsed: z.array(z.string()).default([]),
 });
 export type SessionModes = z.infer<typeof SessionModesSchema>;
+
+// 17. SessionSummary
+export const SessionSummarySchema = z.object({
+  sessionId: z.string().uuid(),
+  summary: z.string(),
+  workDone: z.array(z.string()).default([]),
+  filesChanged: z.array(z.string()).default([]),
+  errorsEncountered: z.array(z.string()).default([]),
+  errorsResolved: z.array(z.string()).default([]),
+  keyDecisions: z.array(z.string()).default([]),
+  generatedAt: z.coerce.date(),
+  modelUsed: z.string().optional()
+});
+export type SessionSummary = z.infer<typeof SessionSummarySchema>;

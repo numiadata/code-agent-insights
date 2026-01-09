@@ -44,18 +44,32 @@ Code Agent Insights helps developers build persistent memory and understanding a
 - Low-confidence filtering
 
 ### 🔌 MCP Server
-- **recall** - Search past learnings and sessions during coding
+- **recall** - Search past learnings and session summaries during coding
 - **remember** - Save learnings in real-time during sessions
 - **similar_errors** - Find past error resolutions
 - **file_history** - Get session history for files
+- **session_search** - Search sessions by content, date, or outcome (NEW!)
 - Seamless integration with Claude Code
 
-### 🔀 Git Integration (New!)
+### 🔀 Git Integration
 - **Session-commit correlation** - Match sessions to commits with confidence scoring
 - **Project overview** - List all tracked projects with stats
 - **CLAUDE.md sync** - Push learnings to project documentation
 - Smart merging with idempotency and dry-run mode
 - Filter by global/project scope and confidence levels
+
+### 🤖 AI-Powered Summarization (New!)
+- **Automatic session summaries** - Claude API generates structured summaries
+- **Tracks work done, files changed, errors, and key decisions**
+- **Searchable summaries** - Enhanced MCP recall tool searches both learnings and session summaries
+- **Auto-summarize via hooks** - Automatic summarization after session completion
+- Dry-run mode and force re-summarization options
+
+### ⚙️ Configuration & Automation (New!)
+- **User preferences** - YAML-based config at `~/.code-agent-insights/config.yaml`
+- **Session hooks** - Automatic indexing, summarization, and sync after sessions
+- **Auto-sync triggers** - Event-driven sync after review/clean operations
+- **Configurable thresholds** - Control auto-summarize, sync options, and confidence levels
 
 ### 🛠️ Robust Parser
 - Handles malformed JSONL/JSON gracefully
@@ -140,10 +154,11 @@ cai clean --duplicates --dry-run
 ## MCP Server Setup
 
 The MCP server provides in-session memory tools for Claude Code:
-- **recall** - Search past learnings and sessions during coding
+- **recall** - Search past learnings and session summaries during coding
 - **remember** - Save learnings in real-time during sessions
 - **similar_errors** - Find past error resolutions
 - **file_history** - Get session history for files
+- **session_search** - Search sessions by content, date, or outcome
 
 ### Automatic Setup (Recommended)
 
@@ -170,10 +185,11 @@ claude mcp add --transport stdio --scope user code-agent-insights -- cai-mcp
 
 Once configured, these tools become available in Claude Code:
 
-- `mcp__code-agent-insights__recall` - Search learnings/sessions
+- `mcp__code-agent-insights__recall` - Search learnings and session summaries
 - `mcp__code-agent-insights__remember` - Save new learnings
 - `mcp__code-agent-insights__similar_errors` - Find past errors
 - `mcp__code-agent-insights__file_history` - Get file session history
+- `mcp__code-agent-insights__session_search` - Search sessions by content, date, or outcome
 
 See [MCP_TESTING_GUIDE.md](./MCP_TESTING_GUIDE.md) for detailed testing instructions.
 
@@ -199,6 +215,8 @@ cai search "react hooks"
 cai search "error handling" -n 20
 cai search "database" -p ./my-project
 cai search "async await" --summarize
+cai search "authentication" --since 7d        # Last 7 days
+cai search "bug fix" --since 2025-01-01       # Since specific date
 ```
 
 ### `cai stats`
@@ -243,6 +261,44 @@ cai review -p ./my-project    # Filter by project
 ```
 
 Actions: `(k)eep | (d)elete | (e)dit | (s)kip | (q)uit`
+
+### `cai summarize`
+Generate AI-powered session summaries (requires ANTHROPIC_API_KEY)
+
+```bash
+cai summarize --last-session           # Summarize most recent session
+cai summarize --all                    # Summarize all unsummarized sessions
+cai summarize --session-id <id>        # Summarize specific session
+cai summarize --limit 10               # Limit number of sessions
+cai summarize --force                  # Re-summarize existing summaries
+cai summarize --dry-run                # Preview without saving
+```
+
+### `cai config`
+Manage configuration settings
+
+```bash
+cai config show                                # Show all config
+cai config get summarization.autoSummarize     # Get specific value
+cai config set sync.autoSync true              # Set config value
+cai config edit                                # Open in editor
+cai config reset                               # Reset to defaults
+cai config path                                # Show config file path
+```
+
+### `cai hooks`
+Manage session hooks for automation
+
+```bash
+cai hooks install     # Install post-session hook
+cai hooks uninstall   # Remove post-session hook
+cai hooks status      # Check hook installation status
+```
+
+The post-session hook automatically:
+- Indexes new sessions (`cai index --since 1h`)
+- Generates summaries if `ANTHROPIC_API_KEY` is set
+- Syncs to projects if `autoSync: true` in config
 
 ### `cai recommend`
 Get personalized feature recommendations
@@ -312,6 +368,7 @@ code-agent-insights/
 
 ### Core Tables
 - `sessions` - Session metadata and statistics
+- `session_summaries` - AI-generated session summaries (NEW!)
 - `events` - All events in sessions (with FTS)
 - `tool_calls` - Tool invocations
 - `errors` - Errors encountered
@@ -363,7 +420,13 @@ pip install -e .
 Data is stored in `~/.code-agent-insights/`:
 - `insights.db` - Main database
 - `embeddings.db` - Vector storage (if using embeddings)
-- `config.json` - User preferences
+- `config.yaml` - User preferences (YAML format)
+- `hooks.log` - Session hook execution log
+
+Configuration options include:
+- **Summarization**: Auto-summarize settings, model selection
+- **Sync**: Auto-sync triggers, confidence thresholds, global/project scope
+- **Hooks**: Enable/disable automatic session processing
 
 ## Environment Variables
 
@@ -376,6 +439,7 @@ ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 - [x] **Phase 1**: Core + CLI with search, stats, and feature tracking
 - [x] **Phase 2**: MCP server for in-session recall/remember (4 tools: recall, remember, similar_errors, file_history)
 - [x] **Phase 3**: Git integration, project management, and CLAUDE.md sync (3 new commands: projects, sync, correlate)
+- [x] **Phase 3.5**: AI-powered summarization, configuration system, and automation (3 new commands: summarize, config, hooks; enhanced MCP tools)
 - [ ] **Phase 4**: CI/CD outcome tracking
 - [ ] **Phase 5**: Team sync and manager dashboards
 

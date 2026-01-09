@@ -46,7 +46,7 @@ export class InsightsMCPServer {
           {
             name: 'recall',
             description:
-              "Search past coding sessions and learnings for relevant context. Use this when the user asks about past work, mentions a problem they've seen before, or when you need context about how something was done previously.",
+              'Search past coding sessions, learnings, and summaries for relevant context. Returns both session summaries (what was done, files changed, errors fixed) and extracted learnings (patterns, fixes, conventions). Use this when the user asks about past work, mentions a problem they\'ve seen before, or when you need context about how something was done previously.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -58,11 +58,16 @@ export class InsightsMCPServer {
                   type: 'string',
                   enum: ['project', 'global', 'all'],
                   description:
-                    'Search scope: project (current project), global (universal learnings), or all',
+                    'Search scope: project (current project), global (all projects), or all',
                 },
                 limit: {
                   type: 'number',
                   description: 'Maximum results to return (default: 5)',
+                },
+                include: {
+                  type: 'array',
+                  items: { type: 'string', enum: ['learnings', 'sessions', 'summaries'] },
+                  description: 'What to search: learnings, sessions, summaries (default: all)',
                 },
               },
               required: ['query'],
@@ -140,6 +145,39 @@ export class InsightsMCPServer {
               required: ['file_path'],
             },
           },
+          {
+            name: 'session_search',
+            description:
+              'Search past coding sessions by content, date, or outcome. Returns detailed session information including what was done, files changed, and errors resolved. Use this to find specific past work or to understand what happened in previous sessions.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'What to search for in session content and summaries',
+                },
+                project_path: {
+                  type: 'string',
+                  description: 'Filter to specific project path',
+                },
+                since: {
+                  type: 'string',
+                  description:
+                    'Only sessions after this date (ISO format or relative: "7d", "2w", "1m")',
+                },
+                outcome: {
+                  type: 'string',
+                  enum: ['success', 'partial', 'failure', 'unknown'],
+                  description: 'Filter by session outcome',
+                },
+                limit: {
+                  type: 'number',
+                  description: 'Maximum sessions to return (default: 10)',
+                },
+              },
+              required: ['query'],
+            },
+          },
         ],
       };
     });
@@ -166,6 +204,10 @@ export class InsightsMCPServer {
 
           case 'file_history':
             result = await this.handleFileHistory(args as any);
+            break;
+
+          case 'session_search':
+            result = await this.handleSessionSearch(args as any);
             break;
 
           default:
@@ -233,6 +275,18 @@ export class InsightsMCPServer {
     // Import tool implementation
     const { fileHistoryTool } = await import('./tools/file-history.js');
     return fileHistoryTool(this.db, args);
+  }
+
+  private async handleSessionSearch(args: {
+    query: string;
+    project_path?: string;
+    since?: string;
+    outcome?: 'success' | 'partial' | 'failure' | 'unknown';
+    limit?: number;
+  }): Promise<string> {
+    // Import tool implementation
+    const { sessionSearchTool } = await import('./tools/session-search.js');
+    return sessionSearchTool(this.db, args);
   }
 
   async start(): Promise<void> {

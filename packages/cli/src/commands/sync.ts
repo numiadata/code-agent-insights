@@ -11,29 +11,16 @@ interface SyncOptions {
   dryRun?: boolean;
   section?: string;
   global?: boolean;
-  minConfidence?: number;
+  minConfidence?: string;
   reviewedOnly?: boolean;
+  silent?: boolean; // For auto-sync from other commands
 }
 
-export const syncCommand = new Command('sync')
-  .description('Sync learnings to project CLAUDE.md files')
-  .option('-p, --project <path>', 'Sync specific project only')
-  .option('--dry-run', 'Show what would be synced without modifying files')
-  .option('--section <name>', 'Section name in CLAUDE.md', 'Learnings from Past Sessions')
-  .option('--no-global', 'Exclude global-scoped learnings')
-  .option('--min-confidence <number>', 'Minimum confidence threshold', '0.7')
-  .option('--reviewed-only', 'Only include reviewed learnings')
-  .addHelpText('after', `
-Examples:
-  $ cai sync                          Sync all projects
-  $ cai sync --dry-run                Preview changes without writing
-  $ cai sync -p /path/to/project      Sync specific project only
-  $ cai sync --min-confidence 0.9     Only high-confidence learnings
-  $ cai sync --no-global              Exclude global learnings
-  $ cai sync --reviewed-only          Only reviewed/manual learnings`)
-  .action(async (options: SyncOptions) => {
-    const db = new InsightsDatabase();
-    const spinner = ora('Loading projects...').start();
+export async function runSync(options: SyncOptions = {}): Promise<void> {
+  const db = new InsightsDatabase();
+  const spinner = options.silent
+    ? { succeed: () => {}, fail: () => {}, start: () => ({ succeed: () => {}, fail: () => {} }) }
+    : ora('Loading projects...').start();
 
     try {
       // Get projects to sync
@@ -155,13 +142,35 @@ Examples:
       console.log(chalk.dim(`\nTotal: ${totalLearnings} learnings across ${results.length} projects`));
 
       // Dry-run reminder
-      if (options.dryRun && synced.length > 0) {
+      if (options.dryRun && synced.length > 0 && !options.silent) {
         console.log(chalk.yellow('\n💡 Run without --dry-run to apply changes.'));
       }
     } catch (error) {
-      spinner.fail('Sync failed');
-      console.error(chalk.red(`Error: ${(error as Error).message}`));
+      if (!options.silent) {
+        spinner.fail('Sync failed');
+        console.error(chalk.red(`Error: ${(error as Error).message}`));
+      }
     } finally {
       db.close();
     }
+}
+
+export const syncCommand = new Command('sync')
+  .description('Sync learnings to project CLAUDE.md files')
+  .option('-p, --project <path>', 'Sync specific project only')
+  .option('--dry-run', 'Show what would be synced without modifying files')
+  .option('--section <name>', 'Section name in CLAUDE.md', 'Learnings from Past Sessions')
+  .option('--no-global', 'Exclude global-scoped learnings')
+  .option('--min-confidence <number>', 'Minimum confidence threshold', '0.7')
+  .option('--reviewed-only', 'Only include reviewed learnings')
+  .addHelpText('after', `
+Examples:
+  $ cai sync                          Sync all projects
+  $ cai sync --dry-run                Preview changes without writing
+  $ cai sync -p /path/to/project      Sync specific project only
+  $ cai sync --min-confidence 0.9     Only high-confidence learnings
+  $ cai sync --no-global              Exclude global learnings
+  $ cai sync --reviewed-only          Only reviewed/manual learnings`)
+  .action(async (options: SyncOptions) => {
+    await runSync(options);
   });

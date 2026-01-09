@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as readline from 'readline';
-import { InsightsDatabase } from '@code-agent-insights/core';
+import { InsightsDatabase, getConfig } from '@code-agent-insights/core';
 
 interface ReviewOptions {
   unreviewed?: boolean;
@@ -217,6 +217,21 @@ Examples:
         chalk.yellow(`⊝ Skipped: ${stats.skipped}`)
       );
       console.log();
+
+      // Auto-sync if configured
+      const config = getConfig();
+      if (config.sync.autoSync && config.sync.triggers.includes('on_review_complete')) {
+        console.log(chalk.dim('Auto-syncing to projects...'));
+        const { runSync } = await import('./sync.js');
+        await runSync({
+          dryRun: false,
+          global: config.sync.options.includeGlobal,
+          minConfidence: config.sync.options.minConfidence.toString(),
+          reviewedOnly: config.sync.options.reviewedOnly,
+          silent: true
+        });
+        console.log(chalk.green('✓ Auto-sync complete'));
+      }
     } catch (error) {
       console.error(chalk.red(`Error: ${(error as Error).message}`));
     } finally {

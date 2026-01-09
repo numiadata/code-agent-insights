@@ -11,6 +11,7 @@ import type {
   SubAgentInvocation,
   ToolSequence,
   SessionModes,
+  SessionSummary,
 } from '../types';
 
 interface SessionQueryOptions {
@@ -347,6 +348,55 @@ export class InsightsDatabase {
         UPDATE schema_version SET version = 4;
       `);
     }
+
+    // Migration 5 - Session summaries and enriched session data
+    if (currentVersion < 5) {
+      this.runMigration5();
+    }
+  }
+
+  private runMigration5(): void {
+    const columns = this.db.prepare("PRAGMA table_info(sessions)").all() as any[];
+    const columnNames = columns.map(c => c.name);
+
+    if (!columnNames.includes('summary_generated')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN summary_generated INTEGER DEFAULT 0");
+    }
+    if (!columnNames.includes('work_done')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN work_done TEXT DEFAULT '[]'");
+    }
+    if (!columnNames.includes('errors_encountered')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN errors_encountered TEXT DEFAULT '[]'");
+    }
+    if (!columnNames.includes('errors_resolved')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN errors_resolved TEXT DEFAULT '[]'");
+    }
+    if (!columnNames.includes('commit_hash')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN commit_hash TEXT");
+    }
+    if (!columnNames.includes('commit_message')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN commit_message TEXT");
+    }
+
+    // Create session_summaries table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_summaries (
+        session_id TEXT PRIMARY KEY,
+        summary TEXT NOT NULL,
+        work_done TEXT DEFAULT '[]',
+        files_changed TEXT DEFAULT '[]',
+        errors_encountered TEXT DEFAULT '[]',
+        errors_resolved TEXT DEFAULT '[]',
+        key_decisions TEXT DEFAULT '[]',
+        generated_at TEXT NOT NULL,
+        model_used TEXT,
+        FOREIGN KEY (session_id) REFERENCES sessions(id)
+      )
+    `);
+
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_session_summaries_generated ON session_summaries(generated_at)");
+
+    this.db.exec("UPDATE schema_version SET version = 5");
   }
 
   // ============================================================================
@@ -440,6 +490,87 @@ export class InsightsDatabase {
     stmt.run(summary, outcome, id);
   }
 
+  insertSessionSummary(summary: SessionSummary): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO session_summaries
+      (session_id, summary, work_done, files_changed, errors_encountered, errors_resolved, key_decisions, generated_at, model_used)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      summary.sessionId,
+      summary.summary,
+      JSON.stringify(summary.workDone),
+      JSON.stringify(summary.filesChanged),
+      JSON.stringify(summary.errorsEncountered),
+      JSON.stringify(summary.errorsResolved),
+      JSON.stringify(summary.keyDecisions),
+      summary.generatedAt.toISOString(),
+      summary.modelUsed
+    );
+
+    // Mark session as having summary generated
+    this.db.prepare("UPDATE sessions SET summary_generated = 1 WHERE id = ?").run(summary.sessionId);
+  }
+
+  getSessionSummary(sessionId: string): SessionSummary | null {
+    const row = this.db.prepare("SELECT * FROM session_summaries WHERE session_id = ?").get(sessionId) as any;
+    if (!row) return null;
+
+    return {
+      sessionId: row.session_id,
+      summary: row.summary,
+      workDone: JSON.parse(row.work_done || '[]'),
+      filesChanged: JSON.parse(row.files_changed || '[]'),
+      errorsEncountered: JSON.parse(row.errors_encountered || '[]'),
+      errorsResolved: JSON.parse(row.errors_resolved || '[]'),
+      keyDecisions: JSON.parse(row.key_decisions || '[]'),
+      generatedAt: new Date(row.generated_at),
+      modelUsed: row.model_used
+    };
+  }
+
+  getSessionsWithoutSummary(limit: number = 10): Session[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM sessions
+      WHERE summary_generated = 0 OR summary_generated IS NULL
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).all(limit) as any[];
+
+    return rows.map(this.rowToSession.bind(this));
+  }
+
+  searchSessionSummaries(query: string, options: { limit?: number; projectPath?: string } = {}): SessionSummary[] {
+    const limit = options.limit || 10;
+    let sql = `
+      SELECT ss.* FROM session_summaries ss
+      JOIN sessions s ON ss.session_id = s.id
+      WHERE (ss.summary LIKE ? OR ss.work_done LIKE ?)
+    `;
+    const params: any[] = [`%${query}%`, `%${query}%`];
+
+    if (options.projectPath) {
+      sql += ' AND s.project_path = ?';
+      params.push(options.projectPath);
+    }
+
+    sql += ' ORDER BY ss.generated_at DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+
+    return rows.map(row => ({
+      sessionId: row.session_id,
+      summary: row.summary,
+      workDone: JSON.parse(row.work_done || '[]'),
+      filesChanged: JSON.parse(row.files_changed || '[]'),
+      errorsEncountered: JSON.parse(row.errors_encountered || '[]'),
+      errorsResolved: JSON.parse(row.errors_resolved || '[]'),
+      keyDecisions: JSON.parse(row.key_decisions || '[]'),
+      generatedAt: new Date(row.generated_at),
+      modelUsed: row.model_used
+    }));
+  }
+
   /**
    * Delete a session and all its related data.
    * Note: Learnings are preserved to maintain extracted knowledge.
@@ -454,6 +585,7 @@ export class InsightsDatabase {
     this.db.prepare('DELETE FROM sub_agent_invocations WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM tool_sequences WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM session_modes WHERE session_id = ?').run(sessionId);
+    this.db.prepare('DELETE FROM session_summaries WHERE session_id = ?').run(sessionId);
     // Don't delete learnings - keep extracted knowledge, but unlink from session
     this.db.prepare('UPDATE learnings SET session_id = NULL WHERE session_id = ?').run(sessionId);
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
