@@ -671,6 +671,14 @@ export class ClaudeCodeParser {
     // Fallback: try to extract from session path or use parent directory
     const projectHash = this.extractProjectHash(sessionPath);
     if (projectHash) {
+      // Convert project hash back to real filesystem path
+      // Format: -Users-rafa-Documents-Numia-website -> /Users/rafa/Documents/Numia/website
+      if (projectHash.startsWith('-')) {
+        const realPath = projectHash.substring(1).replace(/-/g, '/');
+        // Add leading slash if not present
+        return realPath.startsWith('/') ? realPath : '/' + realPath;
+      }
+      // Fallback to session directory if hash format is unexpected
       return path.join(this.claudeDir, 'projects', projectHash);
     }
     return path.dirname(path.dirname(sessionPath));
