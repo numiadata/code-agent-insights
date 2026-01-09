@@ -156,7 +156,7 @@ export type SkillInvocation = z.infer<typeof SkillInvocationSchema>;
 export const SubAgentInvocationSchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().uuid(),
-  parentEventId: z.string().uuid(),
+  parentEventId: z.string().uuid().nullable(),
   taskDescription: z.string(),
   toolsAllowed: z.array(z.string()).default([]),
   startedAt: z.date(),

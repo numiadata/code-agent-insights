@@ -211,7 +211,54 @@ Examples:
         }
       }
 
-      // 10. Log newline, then green success message
+      // 10. Process sub-agent sessions
+      console.log('');
+      const subAgentSpinner = ora('Discovering sub-agent sessions...').start();
+
+      const subAgentInfos = await parser.discoverSubAgentSessions();
+      subAgentSpinner.succeed(`Found ${subAgentInfos.length} sub-agent sessions`);
+
+      if (subAgentInfos.length > 0) {
+        console.log(chalk.blue(`\nIndexing ${subAgentInfos.length} sub-agent sessions...`));
+
+        let subAgentSuccess = 0;
+        let subAgentErrors = 0;
+
+        for (const subAgentInfo of subAgentInfos) {
+          try {
+            // Parse the sub-agent session
+            const parsed = await parser.parseSubAgentSession(
+              subAgentInfo.path,
+              subAgentInfo.parentSessionId,
+              subAgentInfo.agentId
+            );
+
+            // Insert in transaction
+            const insertTransaction = db.transaction(() => {
+              db.insertSubAgentInvocations([parsed.subAgentInvocation]);
+              db.insertEvents(parsed.events);
+              db.insertToolCalls(parsed.toolCalls);
+              db.insertErrors(parsed.errors);
+            });
+
+            insertTransaction();
+            subAgentSuccess++;
+            process.stdout.write(`\r  Indexed: ${subAgentSuccess}/${subAgentInfos.length}`);
+          } catch (error) {
+            subAgentErrors++;
+            // Silently skip errors for now
+          }
+        }
+
+        console.log('');
+        console.log(chalk.green(`✓ Successfully indexed ${subAgentSuccess} sub-agent sessions`));
+
+        if (subAgentErrors > 0) {
+          console.log(chalk.yellow(`⚠ Failed to index ${subAgentErrors} sub-agent sessions`));
+        }
+      }
+
+      // 11. Log newline, then green success message
       console.log('');
 
       if (totalWarnings > 0) {

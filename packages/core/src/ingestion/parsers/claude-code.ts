@@ -87,6 +87,37 @@ export class ClaudeCodeParser {
     return mainSessions;
   }
 
+  async discoverSubAgentSessions(): Promise<Array<{ path: string; parentSessionId: string; agentId: string }>> {
+    // Find all sub-agent session files (agent-*.jsonl)
+    const pattern = path.join(this.claudeDir, 'projects/*/agent-*.jsonl');
+    const files = await glob(pattern);
+
+    // Extract parent session ID and agent ID from first line of each file
+    const subAgents: Array<{ path: string; parentSessionId: string; agentId: string }> = [];
+
+    for (const file of files) {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const firstLine = content.split('\n')[0];
+        if (!firstLine) continue;
+
+        const parsed = JSON.parse(firstLine);
+        if (parsed.sessionId && parsed.agentId && parsed.isSidechain) {
+          subAgents.push({
+            path: file,
+            parentSessionId: parsed.sessionId,
+            agentId: parsed.agentId,
+          });
+        }
+      } catch (err) {
+        // Skip invalid files
+        continue;
+      }
+    }
+
+    return subAgents;
+  }
+
   async parseSession(sessionPath: string): Promise<ParsedSession> {
     // Initialize parse stats
     const stats = {
@@ -851,5 +882,70 @@ export class ClaudeCodeParser {
     }
 
     return { messages, metadata };
+  }
+
+  async parseSubAgentSession(
+    subAgentPath: string,
+    parentSessionId: string,
+    agentId: string
+  ): Promise<{
+    subAgentInvocation: SubAgentInvocation;
+    events: Event[];
+    toolCalls: ToolCall[];
+    errors: ErrorRecord[];
+  }> {
+    // Parse the sub-agent session file using existing logic
+    const parsed = await this.parseSession(subAgentPath);
+
+    // Extract task description from first user message
+    const firstUserMessage = parsed.events.find(e => e.type === 'user_message');
+    const taskDescription = firstUserMessage?.content || 'Unknown task';
+
+    // Extract tools used by this sub-agent
+    const toolsAllowed = Array.from(new Set(parsed.toolCalls.map(tc => tc.toolName)));
+
+    // Create SubAgentInvocation record
+    const subAgentInvocation: SubAgentInvocation = {
+      id: agentId,
+      sessionId: parentSessionId,
+      parentEventId: null, // We don't have this from the agent file
+      taskDescription,
+      toolsAllowed,
+      startedAt: parsed.session.startedAt,
+      endedAt: parsed.session.endedAt,
+      tokenCount: parsed.session.tokenCount,
+      turnCount: parsed.session.turnCount,
+      outcome: parsed.session.outcome,
+      resultSummary: parsed.session.summary,
+    };
+
+    // Prefix event IDs with agent ID to avoid collisions
+    const events = parsed.events.map(e => ({
+      ...e,
+      id: `${agentId}-${e.id}`,
+      sessionId: parentSessionId,
+    }));
+
+    const toolCalls = parsed.toolCalls.map(tc => ({
+      ...tc,
+      id: `${agentId}-${tc.id}`,
+      sessionId: parentSessionId,
+      eventId: `${agentId}-${tc.eventId}`,
+    }));
+
+    const errors = parsed.errors.map(err => ({
+      ...err,
+      id: `${agentId}-${err.id}`,
+      sessionId: parentSessionId,
+      eventId: `${agentId}-${err.eventId}`,
+      resolutionEventId: err.resolutionEventId ? `${agentId}-${err.resolutionEventId}` : undefined,
+    }));
+
+    return {
+      subAgentInvocation,
+      events,
+      toolCalls,
+      errors,
+    };
   }
 }

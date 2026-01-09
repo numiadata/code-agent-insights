@@ -458,7 +458,8 @@ export class InsightsDatabase {
    * Check if a session needs re-indexing based on file modification time
    * Returns true if:
    * 1. Session doesn't exist in database, OR
-   * 2. File modification time is newer than the session's ended_at timestamp
+   * 2. File modification time is significantly newer than the session's ended_at timestamp
+   *    (with 5-second tolerance to account for filesystem write delays)
    */
   needsReindexing(rawPath: string, fileModTime: Date): boolean {
     const stmt = this.db.prepare(
@@ -477,8 +478,10 @@ export class InsightsDatabase {
     }
 
     const endedAt = new Date(row.ended_at);
-    // If file was modified after session ended, re-index
-    return fileModTime > endedAt;
+    // If file was modified significantly after session ended, re-index
+    // Add 5-second tolerance to account for filesystem write delays
+    const tolerance = 5000; // 5 seconds in milliseconds
+    return fileModTime.getTime() > (endedAt.getTime() + tolerance);
   }
 
   getSessions(options: SessionQueryOptions = {}): Session[] {
