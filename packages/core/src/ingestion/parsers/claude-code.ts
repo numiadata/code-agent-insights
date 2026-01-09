@@ -77,7 +77,14 @@ export class ClaudeCodeParser {
       allFiles.push(...files);
     }
 
-    return allFiles;
+    // Filter out sub-agent session files (agent-*.jsonl)
+    // These are created when Claude spawns sub-agents and should not be counted as separate sessions
+    const mainSessions = allFiles.filter(file => {
+      const filename = path.basename(file);
+      return !filename.startsWith('agent-');
+    });
+
+    return mainSessions;
   }
 
   async parseSession(sessionPath: string): Promise<ParsedSession> {
@@ -89,18 +96,19 @@ export class ClaudeCodeParser {
       warnings: [] as string[],
     };
 
-    // 1. Check if session is still in progress by checking file modification time
-    // If file was modified within last 30 seconds, it might still be active
+    // 1. Check if session is still in progress by checking if file is being written to
+    // We'll try to detect if the file is actively being modified by checking its size twice
     try {
-      const fileStats = await fs.stat(sessionPath);
-      const timeSinceModified = Date.now() - fileStats.mtime.getTime();
-      const thirtySecondsInMs = 30 * 1000;
+      const firstStats = await fs.stat(sessionPath);
 
-      if (timeSinceModified < thirtySecondsInMs) {
+      // Wait 100ms and check again - if size is changing, it's still being written
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const secondStats = await fs.stat(sessionPath);
+
+      if (firstStats.size !== secondStats.size) {
         throw new Error(
-          `Session file was modified ${Math.round(timeSinceModified / 1000)}s ago - ` +
-          `skipping to avoid indexing in-progress session. ` +
-          `Wait at least 30s after session ends before indexing.`
+          `Session file is currently being written to (size changed from ${firstStats.size} to ${secondStats.size} bytes). ` +
+          `This session appears to be in progress. Wait until the session ends before indexing.`
         );
       }
     } catch (error) {
