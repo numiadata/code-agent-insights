@@ -135,6 +135,9 @@ export ANTHROPIC_API_KEY=sk-...
 # Index your Claude Code sessions
 cai index
 
+# Install session hooks for automatic indexing
+cai hooks install
+
 # Search for specific topics
 cai search "authentication bug"
 
@@ -150,6 +153,8 @@ cai review --limit 10
 # Clean up duplicates (dry run)
 cai clean --duplicates --dry-run
 ```
+
+**Note:** After running `cai hooks install`, your sessions will be automatically indexed, summarized, and synced after each Claude Code session ends.
 
 ## MCP Server Setup
 
@@ -290,15 +295,74 @@ cai config path                                # Show config file path
 Manage session hooks for automation
 
 ```bash
-cai hooks install     # Install post-session hook
-cai hooks uninstall   # Remove post-session hook
-cai hooks status      # Check hook installation status
+cai hooks install         # Install and configure post-session hook
+cai hooks uninstall       # Remove post-session hook
+cai hooks status          # Check hook installation and activity
+cai hooks logs            # Show recent hook execution logs
+cai hooks logs -f         # Follow hook logs in real-time (great for debugging!)
+cai hooks logs -n 50      # Show last 50 lines
 ```
 
-The post-session hook automatically:
-- Indexes new sessions (`cai index --since 1h`)
-- Generates summaries if `ANTHROPIC_API_KEY` is set
-- Syncs to projects if `autoSync: true` in config
+**What `cai hooks install` does:**
+1. Creates `~/.claude/hooks/post-session.sh` script
+2. Automatically configures `~/.claude/settings.json` to enable the hook
+3. No manual configuration needed!
+
+**The post-session hook automatically runs after each session and:**
+- Indexes new sessions (`cai index --since 6h` - wider window to avoid timezone issues)
+- Generates AI summaries (if `ANTHROPIC_API_KEY` is set)
+- Syncs learnings to CLAUDE.md (if `autoSync: true` in config)
+- Logs detailed execution info to `~/.code-agent-insights/hooks.log`
+
+**For other users:** When sharing this project, users just need to run `cai hooks install` - it will automatically configure their Claude Code installation.
+
+**Debugging hooks:**
+If hooks aren't running automatically or stats aren't updating:
+
+1. **Watch hook execution in real-time:**
+   ```bash
+   # In a separate terminal, run:
+   cai hooks logs -f
+   # Then end your Claude Code session and watch the logs
+   ```
+
+2. **Check hook status:**
+   ```bash
+   cai hooks status  # Shows installation status and recent activity
+   ```
+
+3. **View recent logs:**
+   ```bash
+   cai hooks logs -n 30  # Show last 30 log lines
+   ```
+
+4. **Manually test the hook:**
+   ```bash
+   ~/.claude/hooks/post-session.sh  # Should index recent sessions
+   ```
+
+5. **Verify Claude Code configuration:**
+   Check `~/.claude/settings.json` contains the correct format (see below)
+
+The correct hook configuration in `~/.claude/settings.json` should be:
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/your-username/.claude/hooks/post-session.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Note:** Versions prior to v0.3.5 used an incorrect `postSession` format. If you installed hooks before this version, run `cai hooks install` again to update to the correct `SessionEnd` format.
 
 ### `cai recommend`
 Get personalized feature recommendations

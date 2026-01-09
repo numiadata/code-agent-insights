@@ -89,7 +89,27 @@ export class ClaudeCodeParser {
       warnings: [] as string[],
     };
 
-    // 1. Read file with error handling
+    // 1. Check if session is still in progress by checking file modification time
+    // If file was modified within last 30 seconds, it might still be active
+    try {
+      const fileStats = await fs.stat(sessionPath);
+      const timeSinceModified = Date.now() - fileStats.mtime.getTime();
+      const thirtySecondsInMs = 30 * 1000;
+
+      if (timeSinceModified < thirtySecondsInMs) {
+        throw new Error(
+          `Session file was modified ${Math.round(timeSinceModified / 1000)}s ago - ` +
+          `skipping to avoid indexing in-progress session. ` +
+          `Wait at least 30s after session ends before indexing.`
+        );
+      }
+    } catch (error) {
+      if ((error as any).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    // 2. Read file with error handling
     let fileContent: string;
     try {
       fileContent = await fs.readFile(sessionPath, 'utf-8');
@@ -98,7 +118,7 @@ export class ClaudeCodeParser {
       throw new Error(`Failed to read session file at ${sessionPath}: ${(error as Error).message}`);
     }
 
-    // 2. Detect format: JSONL (newline-delimited) vs regular JSON
+    // 3. Detect format: JSONL (newline-delimited) vs regular JSON
     let messages: any[] = [];
     let sessionMetadata: any = null;
 
@@ -184,7 +204,24 @@ export class ClaudeCodeParser {
     const toolCallMap = new Map<string, { toolCall: ToolCall; event: Event }>();
 
     // For session metadata
-    const sessionId = uuidv4();
+    // Determine session ID:
+    // - For main session files (filename matches sessionId), use the sessionId from file
+    // - For agent files (agent-*.jsonl), generate a new UUID since they share parent sessionId
+    const filenameSessionId = path.basename(sessionPath, '.jsonl');
+    const isAgentFile = filenameSessionId.startsWith('agent-');
+    const fileSessionId = sessionMetadata?.sessionId;
+
+    let sessionId: string;
+    if (isAgentFile || !fileSessionId) {
+      // Agent file or no sessionId in metadata - generate UUID
+      sessionId = uuidv4();
+    } else if (filenameSessionId === fileSessionId) {
+      // Filename matches sessionId - this is the main session file
+      sessionId = fileSessionId;
+    } else {
+      // Filename doesn't match sessionId - might be old format, use UUID
+      sessionId = uuidv4();
+    }
     let firstTimestamp: Date | undefined;
     let lastTimestamp: Date | undefined;
 
@@ -740,7 +777,9 @@ export class ClaudeCodeParser {
     stats: { warnings: string[] }
   ): { messages: RawMessage[]; metadata: any } {
     const messages: RawMessage[] = [];
-    let metadata: any = null;
+    let metadata: any = {
+      sessionId: null,
+    };
 
     for (const event of events) {
       // Handle null/undefined events
@@ -749,13 +788,18 @@ export class ClaudeCodeParser {
         continue;
       }
 
+      // Extract sessionId from any event that has it
+      if (event.sessionId && !metadata.sessionId) {
+        metadata.sessionId = event.sessionId;
+      }
+
       const eventType = event.type;
 
       // Handle different event types
       if (eventType === 'summary') {
         // Extract session metadata from summary event
         if (event.data) {
-          metadata = event.data;
+          metadata = { ...metadata, ...event.data };
         }
         continue;
       }

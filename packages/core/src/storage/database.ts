@@ -454,6 +454,33 @@ export class InsightsDatabase {
     return !!stmt.get(rawPath);
   }
 
+  /**
+   * Check if a session needs re-indexing based on file modification time
+   * Returns true if:
+   * 1. Session doesn't exist in database, OR
+   * 2. File modification time is newer than the session's ended_at timestamp
+   */
+  needsReindexing(rawPath: string, fileModTime: Date): boolean {
+    const stmt = this.db.prepare(
+      'SELECT ended_at FROM sessions WHERE raw_path = ?'
+    );
+    const row = stmt.get(rawPath) as { ended_at: string } | undefined;
+
+    if (!row) {
+      // Session doesn't exist - needs indexing
+      return true;
+    }
+
+    if (!row.ended_at) {
+      // Session has no end time - should re-index
+      return true;
+    }
+
+    const endedAt = new Date(row.ended_at);
+    // If file was modified after session ended, re-index
+    return fileModTime > endedAt;
+  }
+
   getSessions(options: SessionQueryOptions = {}): Session[] {
     let query = 'SELECT * FROM sessions WHERE 1=1';
     const params: any[] = [];

@@ -17,6 +17,7 @@ interface IndexOptions {
 /**
  * Parse a date string that can be either:
  * - ISO date: "2025-01-01"
+ * - Relative hours: "1h"
  * - Relative days: "7d"
  * - Relative weeks: "2w"
  * - Relative months: "1m"
@@ -33,13 +34,16 @@ function parseSinceDate(since: string): Date {
   }
 
   // Try parsing relative formats
-  const relativeMatch = since.match(/^(\d+)([dwm])$/);
+  const relativeMatch = since.match(/^(\d+)([hdwm])$/);
   if (relativeMatch) {
     const value = parseInt(relativeMatch[1], 10);
     const unit = relativeMatch[2];
     const now = new Date();
 
     switch (unit) {
+      case 'h': // hours
+        now.setTime(now.getTime() - (value * 60 * 60 * 1000));
+        return now;
       case 'd': // days
         now.setDate(now.getDate() - value);
         return now;
@@ -57,6 +61,7 @@ function parseSinceDate(since: string): Date {
   throw new Error(
     `Invalid --since format: "${since}". Use:\n` +
     `  - ISO date: 2025-01-01\n` +
+    `  - Relative hours: 1h\n` +
     `  - Relative days: 7d\n` +
     `  - Relative weeks: 2w\n` +
     `  - Relative months: 1m`
@@ -68,11 +73,12 @@ export const indexCommand = new Command('index')
   .option('-s, --source <source>', 'Source to index (claude_code, cursor, all)', 'all')
   .option('--embed', 'Generate embeddings after indexing')
   .option('--extract', 'Extract learnings after indexing (requires ANTHROPIC_API_KEY)')
-  .option('--since <date>', 'Only index sessions after this date (e.g., 7d, 2w, 1m, 2025-01-01)')
+  .option('--since <date>', 'Only index sessions after this date (e.g., 1h, 7d, 2w, 1m, 2025-01-01)')
   .option('-f, --force', 'Reindex all sessions (ignore already indexed)')
   .option('-v, --verbose', 'Show detailed parse warnings')
   .addHelpText('after', `
 Examples:
+  $ cai index --since 1h           Only sessions from last hour
   $ cai index --since 7d           Only sessions from last 7 days
   $ cai index --since 2w           Only sessions from last 2 weeks
   $ cai index --since 2025-01-01   Only sessions after specific date
@@ -122,7 +128,16 @@ Examples:
         console.log(chalk.yellow('\nForce mode enabled - will reindex existing sessions'));
         newSessionPaths = sessionPaths;
       } else {
-        newSessionPaths = sessionPaths.filter(p => !db.sessionExists(p));
+        // Check each session to see if it needs (re)indexing
+        newSessionPaths = sessionPaths.filter(p => {
+          try {
+            const stats = fs.statSync(p);
+            return db.needsReindexing(p, stats.mtime);
+          } catch (error) {
+            // If we can't stat the file, skip it
+            return false;
+          }
+        });
       }
 
       // 7. If no new sessions, log yellow message and return
@@ -150,9 +165,16 @@ Examples:
 
           // Execute all DB operations in a single transaction for atomicity
           const insertTransaction = db.transaction(() => {
-            // If force mode, delete existing data first
-            if (options.force) {
+            // If force mode or session already exists, delete existing data first
+            if (options.force || db.sessionExists(sessionPath)) {
               db.deleteSessionByPath(sessionPath);
+            }
+
+            // Also check if a session with this ID already exists (from a different file)
+            // This can happen when switching from random UUIDs to real session IDs
+            const existingSession = db.getSession(parsed.session.id);
+            if (existingSession) {
+              db.deleteSession(parsed.session.id);
             }
 
             // Insert: session, events, toolCalls, errors
