@@ -94,6 +94,12 @@ export const searchCommand = new Command('search')
         sessions = sessions.filter((s) => s.startedAt >= sinceDate);
       }
 
+      // Fetch session summaries from session_summaries table
+      const sessionsWithSummaries = sessions.map((session) => ({
+        ...session,
+        summaryData: db.getSessionSummary(session.id),
+      }));
+
       // 7. Display learnings if any
       if (learnings.length > 0) {
         console.log(chalk.green.bold(`📚 Learnings (${learnings.length}):\n`));
@@ -107,34 +113,34 @@ export const searchCommand = new Command('search')
       }
 
       // 8. Display sessions if any
-      if (sessions.length > 0) {
-        console.log(chalk.green.bold(`📁 Related Sessions (${sessions.length}):\n`));
-        for (const session of sessions) {
-          console.log(chalk.cyan(session.projectName || 'Unknown'));
+      if (sessionsWithSummaries.length > 0) {
+        console.log(chalk.green.bold(`📁 Related Sessions (${sessionsWithSummaries.length}):\n`));
+        for (const sessionWithSummary of sessionsWithSummaries) {
+          console.log(chalk.cyan(sessionWithSummary.projectName || 'Unknown'));
 
           // Format date
-          const date = session.startedAt.toLocaleDateString();
+          const date = sessionWithSummary.startedAt.toLocaleDateString();
           console.log(
             chalk.dim(
-              `  ${date} • ${session.turnCount} turns • Outcome: ${session.outcome}`
+              `  ${date} • ${sessionWithSummary.turnCount} turns • Outcome: ${sessionWithSummary.outcome}`
             )
           );
 
-          // Summary if exists
-          if (session.summary) {
-            console.log(chalk.dim(`  ${session.summary}`));
+          // Summary from session_summaries table
+          if (sessionWithSummary.summaryData?.summary) {
+            console.log(chalk.dim(`  ${sessionWithSummary.summaryData.summary}`));
           }
 
           // Show skill/mode info if present
           const features: string[] = [];
-          if (session.skillInvocationCount > 0) {
-            features.push(`Skills: ${session.skillInvocationCount}`);
+          if (sessionWithSummary.skillInvocationCount > 0) {
+            features.push(`Skills: ${sessionWithSummary.skillInvocationCount}`);
           }
-          if (session.usedPlanMode) {
+          if (sessionWithSummary.usedPlanMode) {
             features.push('Used plan mode');
           }
-          if (session.subAgentCount > 0) {
-            features.push(`Sub-agents: ${session.subAgentCount}`);
+          if (sessionWithSummary.subAgentCount > 0) {
+            features.push(`Sub-agents: ${sessionWithSummary.subAgentCount}`);
           }
 
           if (features.length > 0) {
@@ -146,7 +152,7 @@ export const searchCommand = new Command('search')
       }
 
       // 9. If no results
-      if (learnings.length === 0 && sessions.length === 0) {
+      if (learnings.length === 0 && sessionsWithSummaries.length === 0) {
         console.log(chalk.yellow('No results found.'));
       }
 
@@ -156,7 +162,7 @@ export const searchCommand = new Command('search')
         const spinner = ora('Generating summary...').start();
 
         try {
-          const summary = await generateSummary(query, learnings, sessions);
+          const summary = await generateSummary(query, learnings, sessionsWithSummaries);
           spinner.stop();
           console.log(summary);
         } catch (error) {
@@ -178,7 +184,7 @@ export const searchCommand = new Command('search')
 async function generateSummary(
   query: string,
   learnings: Learning[],
-  sessions: Session[]
+  sessionsWithSummaries: Array<Session & { summaryData: ReturnType<InsightsDatabase['getSessionSummary']> }>
 ): Promise<string> {
   const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -195,26 +201,26 @@ async function generateSummary(
     context += '\n';
   }
 
-  if (sessions.length > 0) {
+  if (sessionsWithSummaries.length > 0) {
     context += `Sessions found:\n`;
-    for (const session of sessions) {
+    for (const sessionWithSummary of sessionsWithSummaries) {
       const features: string[] = [];
-      if (session.skillInvocationCount > 0) {
-        features.push(`${session.skillInvocationCount} skills`);
+      if (sessionWithSummary.skillInvocationCount > 0) {
+        features.push(`${sessionWithSummary.skillInvocationCount} skills`);
       }
-      if (session.usedPlanMode) {
+      if (sessionWithSummary.usedPlanMode) {
         features.push('plan mode');
       }
-      if (session.subAgentCount > 0) {
-        features.push(`${session.subAgentCount} sub-agents`);
+      if (sessionWithSummary.subAgentCount > 0) {
+        features.push(`${sessionWithSummary.subAgentCount} sub-agents`);
       }
 
-      context += `- ${session.projectName || 'Unknown'}: ${session.outcome}`;
+      context += `- ${sessionWithSummary.projectName || 'Unknown'}: ${sessionWithSummary.outcome}`;
       if (features.length > 0) {
         context += ` (${features.join(', ')})`;
       }
-      if (session.summary) {
-        context += `\n  ${session.summary}`;
+      if (sessionWithSummary.summaryData?.summary) {
+        context += `\n  ${sessionWithSummary.summaryData.summary}`;
       }
       context += '\n';
     }

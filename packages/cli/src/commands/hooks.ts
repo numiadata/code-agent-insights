@@ -32,8 +32,11 @@ LOG_FILE=~/.code-agent-insights/hooks.log
     if cai summarize --last-session 2>&1; then
       echo "✓ Summarize completed"
     else
-      echo "⚠ Summarize failed or skipped"
+      echo "⚠ Summarize failed or skipped (check API key and credits)"
     fi
+  else
+    echo "ℹ Skipping summarization (ANTHROPIC_API_KEY not set)"
+    echo "  To enable: export ANTHROPIC_API_KEY=sk-ant-..."
   fi
 
   # Check if auto-sync is enabled

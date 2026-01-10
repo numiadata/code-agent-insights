@@ -58,10 +58,10 @@ Code Agent Insights helps developers build persistent memory and understanding a
 - Smart merging with idempotency and dry-run mode
 - Filter by global/project scope and confidence levels
 
-### 🤖 AI-Powered Summarization (New!)
+### 🤖 AI-Powered Summarization
 - **Automatic session summaries** - Claude API generates structured summaries
 - **Tracks work done, files changed, errors, and key decisions**
-- **Searchable summaries** - Enhanced MCP recall tool searches both learnings and session summaries
+- **Searchable summaries** - `cai search` and MCP recall tool display session summaries
 - **Auto-summarize via hooks** - Automatic summarization after session completion
 - Dry-run mode and force re-summarization options
 
@@ -124,10 +124,19 @@ cd packages/extractor
 pip install -e .
 ```
 
-Set your Anthropic API key:
+### ⚠️ Required for Summarization & Learning Extraction
+
+To use AI-powered features (`cai summarize`, `cai index --extract`), set your Anthropic API key:
+
 ```bash
-export ANTHROPIC_API_KEY=sk-...
+# Add to your ~/.bashrc, ~/.zshrc, or equivalent
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+**Important:**
+- Get your API key from [Anthropic Console](https://console.anthropic.com/settings/keys)
+- Ensure your account has credits at [Billing](https://console.anthropic.com/settings/billing)
+- Without the API key, only basic indexing and search will work
 
 ## Quick Start
 
@@ -213,16 +222,21 @@ cai index --verbose            # Show parse warnings
 ```
 
 ### `cai search <query>`
-Full-text search across sessions
+Full-text search across sessions and learnings. Displays session summaries when available.
 
 ```bash
 cai search "react hooks"
 cai search "error handling" -n 20
 cai search "database" -p ./my-project
-cai search "async await" --summarize
+cai search "async await" --summarize         # Add AI-powered summary of findings
 cai search "authentication" --since 7d        # Last 7 days
 cai search "bug fix" --since 2025-01-01       # Since specific date
 ```
+
+**Output includes:**
+- Matching learnings with tags
+- Related sessions with summaries (from `cai summarize`)
+- Session metadata (date, turns, outcome, features used)
 
 ### `cai stats`
 View analytics and statistics
@@ -268,15 +282,28 @@ cai review -p ./my-project    # Filter by project
 Actions: `(k)eep | (d)elete | (e)dit | (s)kip | (q)uit`
 
 ### `cai summarize`
-Generate AI-powered session summaries (requires ANTHROPIC_API_KEY)
+Generate AI-powered session summaries
+
+**⚠️ Requires:** `ANTHROPIC_API_KEY` environment variable and account credits
 
 ```bash
+# First time setup
+export ANTHROPIC_API_KEY=sk-ant-...  # Get from https://console.anthropic.com/settings/keys
+
+# Summarize sessions
 cai summarize --last-session           # Summarize most recent session
-cai summarize --all                    # Summarize all unsummarized sessions
+cai summarize --all                    # Summarize ALL sessions without summaries (no limit)
+cai summarize --limit 10               # Summarize up to 10 sessions without summaries
 cai summarize --session-id <id>        # Summarize specific session
-cai summarize --limit 10               # Limit number of sessions
-cai summarize --force                  # Re-summarize existing summaries
-cai summarize --dry-run                # Preview without saving
+cai summarize --force --limit 20       # Re-summarize existing (use with --limit)
+cai summarize --dry-run                # Preview without calling API
+
+# Regenerate ALL summaries for all sessions (useful after API issues are fixed)
+cai summarize --all
+
+# Check if summaries exist
+sqlite3 ~/.code-agent-insights/insights.db "SELECT COUNT(*) FROM session_summaries"
+sqlite3 ~/.code-agent-insights/insights.db "SELECT COUNT(*) FROM sessions"
 ```
 
 ### `cai config`

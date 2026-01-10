@@ -80,8 +80,11 @@ export const summarizeCommand = new Command('summarize')
       } else if (options.lastSession) {
         const allSessions = db.getSessions({ limit: 1 });
         sessionsToSummarize = allSessions;
+      } else if (options.all) {
+        // --all flag: summarize all sessions without summaries (no limit)
+        sessionsToSummarize = db.getSessionsWithoutSummary(999999);
       } else {
-        // Get sessions without summaries or all if --force
+        // Default: Get sessions without summaries or all if --force
         if (options.force) {
           sessionsToSummarize = db.getSessions({ limit });
         } else {
@@ -304,42 +307,62 @@ async function generateSummary(context: string): Promise<{
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 2048,
-    system: SUMMARIZE_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: context,
-      },
-    ],
-  });
-
-  const textContent = message.content.find((c) => c.type === 'text');
-  if (!textContent || !('text' in textContent)) {
-    throw new Error('No text content in response');
-  }
-
-  // Parse JSON response
-  const responseText = textContent.text.trim();
-
-  // Remove markdown code blocks if present
-  const jsonText = responseText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-
   try {
-    const parsed = JSON.parse(jsonText);
-    return {
-      summary: parsed.summary || 'No summary available',
-      work_done: parsed.work_done || [],
-      files_changed: parsed.files_changed || [],
-      errors_encountered: parsed.errors_encountered || [],
-      errors_resolved: parsed.errors_resolved || [],
-      key_decisions: parsed.key_decisions || [],
-    };
-  } catch (error) {
-    console.error(chalk.red('Failed to parse AI response as JSON:'));
-    console.error(chalk.dim(jsonText));
-    throw new Error('Invalid JSON response from API');
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      system: SUMMARIZE_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: context,
+        },
+      ],
+    });
+
+    const textContent = message.content.find((c) => c.type === 'text');
+    if (!textContent || !('text' in textContent)) {
+      throw new Error('No text content in response');
+    }
+
+    // Parse JSON response
+    const responseText = textContent.text.trim();
+
+    // Remove markdown code blocks if present
+    const jsonText = responseText.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+
+    try {
+      const parsed = JSON.parse(jsonText);
+      return {
+        summary: parsed.summary || 'No summary available',
+        work_done: parsed.work_done || [],
+        files_changed: parsed.files_changed || [],
+        errors_encountered: parsed.errors_encountered || [],
+        errors_resolved: parsed.errors_resolved || [],
+        key_decisions: parsed.key_decisions || [],
+      };
+    } catch (error) {
+      console.error(chalk.red('Failed to parse AI response as JSON:'));
+      console.error(chalk.dim(jsonText));
+      throw new Error('Invalid JSON response from API');
+    }
+  } catch (error: any) {
+    // Handle Anthropic API errors with helpful messages
+    if (error?.status === 401) {
+      throw new Error('Invalid API key. Please check your ANTHROPIC_API_KEY.');
+    } else if (error?.status === 429) {
+      throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+    } else if (error?.status === 400 && error?.message?.includes('credit')) {
+      throw new Error('Insufficient credits. Please add credits to your Anthropic account at https://console.anthropic.com/settings/billing');
+    } else if (error?.message?.includes('credit balance is too low')) {
+      throw new Error('Insufficient credits. Please add credits to your Anthropic account at https://console.anthropic.com/settings/billing');
+    } else if (error?.error?.type === 'insufficient_quota') {
+      throw new Error('Insufficient credits. Please add credits to your Anthropic account at https://console.anthropic.com/settings/billing');
+    } else if (error?.status && error?.status >= 500) {
+      throw new Error(`Anthropic API error (${error.status}): Service temporarily unavailable. Please try again later.`);
+    }
+
+    // Re-throw with original error if not caught above
+    throw error;
   }
 }
