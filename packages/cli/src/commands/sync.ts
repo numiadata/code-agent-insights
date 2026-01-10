@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import * as path from 'path';
 import { InsightsDatabase } from '@code-agent-insights/core';
-import { formatLearningsSection, mergeIntoClaudeMd } from '../utils/claude-md';
+import { formatLearningsSection, mergeIntoClaudeMd, removeLearningsSection } from '../utils/claude-md';
 import { getGitInfo } from '../utils/git';
 
 interface SyncOptions {
@@ -63,12 +63,36 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
         });
 
         if (learnings.length === 0) {
-          results.push({
-            project: project.name,
-            status: 'skipped',
-            learnings: 0,
-            message: 'No learnings'
+          // When there are no learnings, remove the section if it exists
+          // This handles the case where global learnings were previously synced
+          // but are now excluded with --no-global
+          const removeResult = removeLearningsSection(project.path, {
+            dryRun: options.dryRun
           });
+
+          if (removeResult.action === 'removed') {
+            results.push({
+              project: project.name,
+              status: 'synced',
+              learnings: 0,
+              action: 'removed',
+              message: options.dryRun ? removeResult.diff : 'Removed learnings section'
+            });
+          } else if (removeResult.action === 'not_found') {
+            results.push({
+              project: project.name,
+              status: 'skipped',
+              learnings: 0,
+              message: 'No learnings, section not found'
+            });
+          } else {
+            results.push({
+              project: project.name,
+              status: 'skipped',
+              learnings: 0,
+              message: 'No learnings'
+            });
+          }
           continue;
         }
 

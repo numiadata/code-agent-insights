@@ -172,6 +172,66 @@ ${learningsSection}
   }
 }
 
+export function removeLearningsSection(
+  projectPath: string,
+  options: { dryRun?: boolean } = {}
+): {
+  success: boolean;
+  action: 'removed' | 'not_found' | 'unchanged';
+  path: string;
+  diff?: string;
+} {
+  const claudeMdPath = findClaudeMdPath(projectPath);
+
+  if (!claudeMdPath || !fs.existsSync(claudeMdPath)) {
+    return { success: true, action: 'not_found', path: claudeMdPath || '' };
+  }
+
+  const existingContent = fs.readFileSync(claudeMdPath, 'utf-8');
+
+  // Check if our section exists
+  const hasMarkers = existingContent.includes(SECTION_MARKER_START) &&
+                     existingContent.includes(SECTION_MARKER_END);
+
+  if (!hasMarkers) {
+    return { success: true, action: 'not_found', path: claudeMdPath };
+  }
+
+  // Remove the section
+  const beforeSection = existingContent.split(SECTION_MARKER_START)[0];
+  const afterSection = existingContent.split(SECTION_MARKER_END)[1] || '';
+
+  // Clean up extra whitespace
+  let newContent = beforeSection.trimEnd();
+  if (afterSection.trim()) {
+    newContent += '\n\n' + afterSection.trimStart();
+  }
+
+  // Check if content actually changed
+  if (newContent.trim() === existingContent.trim()) {
+    return { success: true, action: 'unchanged', path: claudeMdPath };
+  }
+
+  // Generate diff for dry-run
+  if (options.dryRun) {
+    const diff = `Would remove learnings section from ${path.basename(claudeMdPath)}`;
+    return { success: true, action: 'removed', path: claudeMdPath, diff };
+  }
+
+  // Write the file
+  try {
+    fs.writeFileSync(claudeMdPath, newContent, 'utf-8');
+    return { success: true, action: 'removed', path: claudeMdPath };
+  } catch (error) {
+    return {
+      success: false,
+      action: 'unchanged',
+      path: claudeMdPath,
+      diff: `Write error: ${error}`
+    };
+  }
+}
+
 function generateSimpleDiff(oldContent: string, newContent: string): string {
   // Simple diff: show what would be added
   const oldLines = new Set(oldContent.split('\n'));
