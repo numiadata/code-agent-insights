@@ -57,7 +57,7 @@ export async function runSync(options: SyncOptions = {}): Promise<void> {
       for (const project of projects) {
         // Get learnings for this project
         const learnings = db.getLearningsForProject(project.path, {
-          includeGlobal: options.global !== false,
+          includeGlobal: options.global === true,
           minConfidence: parseFloat(options.minConfidence || '0.7'),
           onlyReviewed: options.reviewedOnly || false
         });
@@ -184,7 +184,8 @@ export const syncCommand = new Command('sync')
   .option('-p, --project <path>', 'Sync specific project only')
   .option('--dry-run', 'Show what would be synced without modifying files')
   .option('--section <name>', 'Section name in CLAUDE.md', 'Learnings from Past Sessions')
-  .option('--no-global', 'Exclude global-scoped learnings')
+  .option('--global', 'Include global-scoped learnings (default: project-only)')
+  .option('--no-global', 'Exclude global-scoped learnings (default)')
   .option('--min-confidence <number>', 'Minimum confidence threshold', '0.7')
   .option('--reviewed-only', 'Only include reviewed learnings')
   .addHelpText('after', `
