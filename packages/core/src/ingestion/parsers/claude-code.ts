@@ -749,10 +749,67 @@ export class ClaudeCodeParser {
     if (projectHash) {
       // Convert project hash back to real filesystem path
       // Format: -Users-rafa-Documents-Numia-website -> /Users/rafa/Documents/Numia/website
+      // IMPORTANT: This is a heuristic that may fail for paths with dashes in directory names
+      // (e.g., -Users-rafa-Documents-my-app becomes /Users/rafa/Documents/my/app)
+      // TODO: Improve by checking filesystem or requiring project-info.json
       if (projectHash.startsWith('-')) {
-        const realPath = projectHash.substring(1).replace(/-/g, '/');
-        // Add leading slash if not present
-        return realPath.startsWith('/') ? realPath : '/' + realPath;
+        const withoutLeadingDash = projectHash.substring(1);
+
+        // Strategy: Try to intelligently parse the path
+        // First, try the naive approach of replacing all dashes
+        const naivePath = '/' + withoutLeadingDash.replace(/-/g, '/');
+
+        // Check if this path exists on the filesystem
+        try {
+          const fs = require('fs');
+          if (fs.existsSync(naivePath)) {
+            return naivePath;
+          }
+        } catch {
+          // Filesystem check failed, continue with heuristics
+        }
+
+        // Heuristic: Common macOS/Linux path patterns
+        // Format: -Users-username-Documents-... or -home-username-...
+        // We know the first few segments are likely system paths without dashes
+        const parts = withoutLeadingDash.split('-');
+
+        // Try to reconstruct: /Users/username/Documents/... preserving dashes in later segments
+        // Assume first 3-4 segments are system paths (Users, rafa, Documents)
+        if (parts[0] === 'Users' && parts.length > 3) {
+          // /Users/rafa/Documents/... - rejoin remaining parts intelligently
+          const username = parts[1];
+          const topLevel = parts[2]; // Documents, Desktop, etc.
+          const remaining = parts.slice(3);
+
+          // Try common patterns:
+          // 1. All remaining as separate dirs: /Users/rafa/Documents/a/b/c
+          const fullySeparated = `/${parts[0]}/${username}/${topLevel}/${remaining.join('/')}`;
+          try {
+            const fs = require('fs');
+            if (fs.existsSync(fullySeparated)) {
+              return fullySeparated;
+            }
+          } catch {}
+
+          // 2. Some dashes preserved: /Users/rafa/Documents/my-app/src
+          // Try progressively from beginning (prefer more dashes preserved)
+          // This tries: /Users/rafa/Documents/code-agent-insights first, then code/agent-insights, then code/agent/insights
+          for (let i = 1; i <= remaining.length; i++) {
+            const dirs = remaining.slice(0, i - 1).join('/');
+            const lastPart = remaining.slice(i - 1).join('-');
+            const candidate = `/${parts[0]}/${username}/${topLevel}/${dirs}${dirs ? '/' : ''}${lastPart}`;
+            try {
+              const fs = require('fs');
+              if (fs.existsSync(candidate)) {
+                return candidate;
+              }
+            } catch {}
+          }
+        }
+
+        // If all heuristics fail, return naive replacement
+        return naivePath;
       }
       // Fallback to session directory if hash format is unexpected
       return path.join(this.claudeDir, 'projects', projectHash);
