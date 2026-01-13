@@ -3,8 +3,11 @@
 > Local-first observability and memory for Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Status](https://img.shields.io/badge/Status-Early%20Beta-orange)](https://github.com/numiadata/code-agent-insights)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.11+-green)](https://www.python.org/)
+
+**⚠️ Early Beta:** This project is in active development. Installation is currently from source only. Feedback and contributions welcome!
 
 ## Overview
 
@@ -83,22 +86,15 @@ Code Agent Insights helps developers build persistent memory and understanding a
 
 ## Installation
 
-### For Users (Recommended)
+**Note:** Package is not yet published to npm. Install from source for now.
 
-```bash
-# Install globally via npm
-npm install -g code-agent-insights
+### Prerequisites
 
-# Or via pnpm
-pnpm install -g code-agent-insights
+- Node.js 20+ and pnpm (or npm)
+- Claude Code installed
+- Git
 
-# Setup MCP server for Claude Code
-cai setup-mcp
-
-# Restart Claude Code
-```
-
-### For Development
+### Install from Source
 
 ```bash
 # Clone the repository
@@ -115,8 +111,13 @@ pnpm build
 cd packages/cli
 pnpm link --global
 
-# Setup MCP server
+# Verify installation
+cai --version
+
+# Setup MCP server for Claude Code integration
 cai setup-mcp
+
+# Restart Claude Code to load MCP server
 ```
 
 ### Python Extractor (Optional)
@@ -609,6 +610,35 @@ Configuration options include:
 ```bash
 ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 ```
+
+## Known Limitations
+
+This is an early beta release. Here's what you should know:
+
+**Installation:**
+- ❌ Not yet published to npm/pnpm registries
+- ✅ Install from source works well on macOS (tested)
+- ⚠️ Linux/Windows not extensively tested yet
+
+**Compatibility:**
+- ✅ Claude Code sessions (primary focus)
+- ❌ Cursor and VS Code not yet supported
+
+**Features:**
+- ✅ All core features working (indexing, search, analytics, MCP)
+- ⚠️ Learning extraction quality depends on session content
+- ⚠️ Large session databases (1000+ sessions) may have slower searches
+
+**What we need:**
+- Beta testers on different platforms
+- Feedback on installation experience
+- Bug reports and feature requests
+- Usage patterns and analytics that would be valuable
+
+If you encounter issues, please [open an issue](https://github.com/numiadata/code-agent-insights/issues) with:
+- Your OS and Node.js version
+- Full error message
+- Steps to reproduce
 
 ## Contributing
 
