@@ -1,7 +1,7 @@
 {
   "name": "code-agent-insights",
   "version": "0.1.0",
-  "description": "Analytics and memory for coding agents",
+  "description": "Local-first observability and memory for Claude Code",
   "main": "./dist/lib.js",
   "types": "./dist/lib.d.ts",
   "bin": {

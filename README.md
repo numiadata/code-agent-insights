@@ -1,6 +1,6 @@
 # Code Agent Insights
 
-> Local-first observability and memory for coding agents (Claude Code, Cursor, VS Code)
+> Local-first observability and memory for Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Code Agent Insights helps developers build persistent memory and understanding across AI coding sessions. Index your Claude Code, Cursor, and VS Code sessions to:
+Code Agent Insights helps developers build persistent memory and understanding across Claude Code sessions. Index your coding sessions to:
 
 - 🔍 **Search** past sessions ("how did I fix that auth bug?")
 - 🧠 **Extract learnings** automatically from sessions

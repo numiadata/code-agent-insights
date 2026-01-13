@@ -1,10 +1,12 @@
 # Code Agent Insights
 
-Local-first observability and memory for coding agents (Claude Code, Cursor, VS Code).
+Local-first observability and memory for Claude Code.
+
+**Note:** This is a Claude Code-first tool. While the architecture could support other agents (Cursor, VS Code) in the future, current development and testing focuses exclusively on Claude Code sessions.
 
 ## Project Overview
 
-This tool indexes coding agent sessions, extracts learnings, and provides search + analytics. It helps developers:
+This tool indexes Claude Code sessions, extracts learnings, and provides search + analytics. It helps developers:
 
 - Search past sessions ("how did I fix that auth bug?")
 - Auto-extract learnings from sessions
@@ -44,12 +46,10 @@ code-agent-insights/
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         Session Sources                                  │
-├──────────────────┬──────────────────┬───────────────────────────────────┤
-│  Claude Code     │  VS Code Ext     │  Cursor                           │
-│  ~/.claude/      │  ~/.claude/      │  ~/.cursor/                       │
-└────────┬─────────┴────────┬─────────┴─────────────┬─────────────────────┘
-         │                  │                       │
-         └──────────────────┼───────────────────────┘
+│                                                                          │
+│  Claude Code                                                             │
+│  ~/.claude/projects/*/*.jsonl                                           │
+└────────────────────────────┬─────────────────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                      Ingestion Pipeline (TypeScript)                     │
@@ -88,10 +88,10 @@ code-agent-insights/
 
 ### Core Types
 ```typescript
-// Session - a single coding agent conversation
+// Session - a single Claude Code conversation
 interface Session {
   id: string;
-  source: 'claude_code' | 'cursor' | 'vscode';
+  source: 'claude_code';  // Currently only Claude Code supported
   projectPath: string;
   projectName: string;
   gitBranch?: string;
@@ -362,10 +362,10 @@ ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 
 ## File Locations
 
-- Session data: `~/.claude/projects/*/sessions/*.json`
+- Session data: `~/.claude/projects/*/*.jsonl` (Claude Code sessions)
 - Insights database: `~/.code-agent-insights/insights.db`
 - Embeddings database: `~/.code-agent-insights/embeddings.db`
-- Config: `~/.code-agent-insights/config.json`
+- Config: `~/.code-agent-insights/config.yaml`
 
 ## Current Phase
 
