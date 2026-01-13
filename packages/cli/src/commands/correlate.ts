@@ -7,6 +7,7 @@ import { getGitInfo, getRecentCommits, getFilesChangedInCommit } from '../utils/
 interface CorrelateOptions {
   project?: string;
   since?: string;
+  insights?: boolean;
 }
 
 interface SessionCommitCorrelation {
@@ -120,12 +121,14 @@ export const correlateCommand = new Command('correlate')
   .description('Correlate coding sessions with git commits')
   .option('-p, --project <path>', 'Project to analyze (default: current directory)')
   .option('--since <date>', 'Look at sessions/commits since date (default: 30d)', '30d')
+  .option('--insights', 'Show detailed statistics and insights')
   .addHelpText('after', `
 Examples:
   $ cai correlate                     Analyze current project (last 30 days)
   $ cai correlate -p /path/to/project Analyze specific project
   $ cai correlate --since 7d          Last 7 days only
-  $ cai correlate --since 2025-01-01  Since specific date`)
+  $ cai correlate --since 2025-01-01  Since specific date
+  $ cai correlate --insights          Show detailed insights`)
   .action(async (options: CorrelateOptions) => {
     const db = new InsightsDatabase();
 
@@ -273,6 +276,109 @@ Examples:
         console.log(chalk.dim('   - Sessions may not result in commits'));
         console.log(chalk.dim('   - Commits may be batched after multiple sessions'));
         console.log(chalk.dim('   - File tracking may need improvement'));
+      }
+
+      // Display insights if requested
+      if (options.insights) {
+        console.log(chalk.blue('\n\n📊 Session → Code Impact Insights\n'));
+
+        // Use correlation results (not database commit_hash field which may be empty)
+        const correlatedSessionIds = new Set(correlations.map(c => c.session.id));
+        const sessionsWithCorrelations = sessions.filter(s => correlatedSessionIds.has(s.id));
+        const sessionsWithoutCorrelations = unmatchedSessions;
+
+        const withCommitsPct = sessions.length > 0
+          ? Math.round((sessionsWithCorrelations.length / sessions.length) * 100)
+          : 0;
+
+        console.log(chalk.bold('Pipeline'));
+        console.log(`Sessions:           ${sessions.length}`);
+        console.log(chalk.green(`With Commits:       ${sessionsWithCorrelations.length} (${withCommitsPct}%)`));
+        console.log(chalk.yellow(`Without Commits:    ${sessionsWithoutCorrelations.length}\n`));
+
+        // Sessions without commits (use unmatchedSessions from correlation logic)
+        if (sessionsWithoutCorrelations.length > 0) {
+          console.log(chalk.bold('Sessions Without Commits'));
+          console.log(chalk.dim('(These may need follow-up or were exploratory)\n'));
+
+          const sessionsToShow = sessionsWithoutCorrelations.slice(0, 5);
+
+          for (const session of sessionsToShow) {
+            const startedAt = new Date(session.started_at || session.startedAt);
+            const daysAgo = !isNaN(startedAt.getTime())
+              ? Math.floor((Date.now() - startedAt.getTime()) / (1000 * 60 * 60 * 24))
+              : 0;
+            const sessionDate = !isNaN(startedAt.getTime())
+              ? startedAt.toISOString().split('T')[0]
+              : 'unknown date';
+
+            console.log(chalk.yellow(`- ${path.basename(session.project_path || projectPath)} — ${sessionDate} (${daysAgo}d ago)`));
+            console.log(chalk.dim(`  Outcome: ${session.outcome || 'unknown'}`));
+            if (session.summary) {
+              const summaryPreview = session.summary.length > 60
+                ? session.summary.substring(0, 57) + '...'
+                : session.summary;
+              console.log(chalk.dim(`  Summary: "${summaryPreview}"`));
+            }
+            console.log('');
+          }
+
+          if (sessionsWithoutCorrelations.length > 5) {
+            console.log(chalk.dim(`  ...and ${sessionsWithoutCorrelations.length - 5} more\n`));
+          }
+        }
+
+        // High-impact sessions (use correlations sorted by files changed)
+        const highImpactCorrelations = correlations
+          .filter(c => c.commonFiles.length > 0)
+          .sort((a, b) => b.commonFiles.length - a.commonFiles.length)
+          .slice(0, 5);
+
+        if (highImpactCorrelations.length > 0) {
+          console.log(chalk.bold('🌟 High-Impact Sessions'));
+          console.log(chalk.dim('(Sessions that led to significant committed changes)\n'));
+
+          for (const corr of highImpactCorrelations) {
+            const startedAt = new Date(corr.session.started_at || corr.session.startedAt);
+            const sessionDate = !isNaN(startedAt.getTime())
+              ? startedAt.toISOString().split('T')[0]
+              : 'unknown date';
+
+            console.log(chalk.green(`✓ ${path.basename(corr.session.project_path || projectPath)} — ${sessionDate}`));
+
+            const commitHashShort = corr.commit.hash.substring(0, 7);
+            const commitMsg = corr.commit.message || 'No message';
+            const commitMsgPreview = commitMsg.length > 50
+              ? commitMsg.substring(0, 47) + '...'
+              : commitMsg;
+            console.log(chalk.dim(`  Commit: ${commitHashShort} "${commitMsgPreview}"`));
+
+            console.log(chalk.dim(`  Files: ${corr.commonFiles.length} changed`));
+            console.log('');
+          }
+        }
+
+        // Insights and recommendations
+        console.log(chalk.bold('💡 Insights\n'));
+
+        if (withCommitsPct >= 75) {
+          console.log(chalk.green(`✓ High code conversion: ${withCommitsPct}% of sessions lead to commits`));
+        } else if (withCommitsPct >= 50) {
+          console.log(chalk.yellow(`- Moderate code conversion: ${withCommitsPct}% of sessions lead to commits`));
+        } else {
+          console.log(chalk.yellow(`⚠ Low code conversion: only ${withCommitsPct}% of sessions lead to commits`));
+        }
+
+        if (sessionsWithoutCorrelations.length > 0) {
+          console.log(chalk.dim(`- ${sessionsWithoutCorrelations.length} session${sessionsWithoutCorrelations.length === 1 ? '' : 's'} without commits - may be WIP or exploration`));
+        }
+
+        if (highImpactCorrelations.length > 0) {
+          const avgFiles = Math.round(
+            highImpactCorrelations.reduce((sum, c) => sum + c.commonFiles.length, 0) / highImpactCorrelations.length
+          );
+          console.log(chalk.green(`✓ High-impact sessions average ${avgFiles} files changed per commit`));
+        }
       }
 
     } finally {

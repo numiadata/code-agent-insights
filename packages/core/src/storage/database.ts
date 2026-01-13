@@ -1721,6 +1721,65 @@ export class InsightsDatabase {
     };
   }
 
+  getSessionsWithoutCommits(since?: Date, projectPath?: string, limit: number = 20): Session[] {
+    let sql = `
+      SELECT * FROM sessions
+      WHERE (commit_hash IS NULL OR commit_hash = '')
+    `;
+
+    const params: any[] = [];
+
+    if (since) {
+      sql += ' AND started_at >= ?';
+      params.push(since.toISOString());
+    }
+
+    if (projectPath) {
+      sql += ' AND project_path = ?';
+      params.push(projectPath);
+    }
+
+    sql += ' ORDER BY started_at DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map(row => this.rowToSession(row));
+  }
+
+  getHighImpactSessions(since?: Date, projectPath?: string, limit: number = 10): Array<{
+    session: Session;
+    filesChanged: number;
+  }> {
+    let sql = `
+      SELECT * FROM sessions
+      WHERE outcome = 'success'
+        AND commit_hash IS NOT NULL
+        AND commit_hash != ''
+    `;
+
+    const params: any[] = [];
+
+    if (since) {
+      sql += ' AND started_at >= ?';
+      params.push(since.toISOString());
+    }
+
+    if (projectPath) {
+      sql += ' AND project_path = ?';
+      params.push(projectPath);
+    }
+
+    sql += ' ORDER BY files_modified DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+
+    return rows.map(row => ({
+      session: this.rowToSession(row),
+      filesChanged: row.files_modified || 0
+    }));
+  }
+
   // ============================================================================
   // Utility
   // ============================================================================
