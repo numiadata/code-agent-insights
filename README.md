@@ -30,11 +30,15 @@ Code Agent Insights helps developers build persistent memory and understanding a
 - Optional AI-powered summarization
 
 ### 📊 Analytics & Statistics
-- Overall metrics (sessions, tokens, errors, success rates)
-- Skill usage breakdown
-- Tool pattern analysis
-- Sub-agent effectiveness
-- Mode comparison (plan mode, thinking, sub-agents)
+- **Overall metrics** - Sessions, tokens, errors, success rates
+- **Trends analysis** - Productivity trends over time with period grouping
+- **Tool effectiveness** - Which tools/features work best vs baseline
+- **Error analysis** - Recurring errors, resolution rates, documented fixes
+- **Comprehensive reports** - Manager-friendly summaries with period comparison
+- **Mode comparison** - Plan mode, thinking, sub-agents effectiveness
+- **Skill usage breakdown** - Track skill invocations and ROI
+- **Tool pattern analysis** - Common tool sequences and success rates
+- **Sub-agent effectiveness** - Delegation outcomes and token efficiency
 
 ### 🧠 Learning Management
 - Auto-extract learnings via Claude API
@@ -428,7 +432,65 @@ cai correlate                     # Analyze current project (last 30 days)
 cai correlate -p /path/to/project # Analyze specific project
 cai correlate --since 7d          # Last 7 days only
 cai correlate --since 2025-01-01  # Since specific date
+cai correlate --insights          # Show detailed impact analysis
 ```
+
+### `cai trends`
+Analyze productivity trends over time
+
+```bash
+cai trends                        # Last 30 days (default)
+cai trends --since 7d             # Last 7 days
+cai trends --since 30d --group-by week   # Group by week
+cai trends --json                 # JSON output
+```
+
+### `cai effectiveness`
+Analyze tool and feature effectiveness
+
+```bash
+cai effectiveness                        # All tools (last 30 days)
+cai effectiveness --since 7d             # Last 7 days
+cai effectiveness --category modes       # Filter by category
+cai effectiveness --min-sessions 2       # Lower threshold
+cai effectiveness --json                 # JSON output
+```
+
+**Categories:** modes, agents, skills, file_ops, execution, search, mcp, navigation, notebook, other
+
+### `cai errors`
+Analyze error patterns and resolution rates
+
+```bash
+cai errors                        # Last 30 days (default)
+cai errors --since 7d             # Last 7 days
+cai errors --limit 20             # Show top 20 error types
+cai errors --json                 # JSON output
+```
+
+### `cai report`
+Generate comprehensive analytics report
+
+```bash
+cai report                                    # Weekly report (7 days)
+cai report --since 30d                        # Monthly report
+cai report --title "Q1 Summary"               # Custom title
+cai report --json                             # JSON output for API
+```
+
+### `cai init`
+Initialize conventions for a project
+
+```bash
+cai init                          # Initialize current project
+cai init /path/to/project         # Initialize specific project
+cai init --force                  # Overwrite existing files
+```
+
+**What it does:**
+- Updates/creates CLAUDE.md with conventions section
+- Creates `.claude/skills/code-agent-insights/SKILL.md` for Claude Code
+- Sets up best practices and workflow guidance
 
 ## Architecture
 
