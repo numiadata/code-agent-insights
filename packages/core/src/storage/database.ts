@@ -65,6 +65,57 @@ interface ModeEffectiveness {
   withoutMode: { success: number; total: number };
 }
 
+interface TrendPeriod {
+  period: string;
+  sessionCount: number;
+  successCount: number;
+  failureCount: number;
+  learningCount: number;
+  errorCount: number;
+  tokenCount: number;
+  avgSessionDuration: number;
+}
+
+interface TrendsOptions {
+  since?: Date;
+  until?: Date;
+  groupBy?: 'day' | 'week' | 'month';
+}
+
+interface ToolUsageStat {
+  toolName: string;
+  category: string;
+  usageCount: number;
+  sessionCount: number;
+  successRate: number;
+  avgCallsPerSession: number;
+}
+
+interface ToolUsageOptions {
+  since?: Date;
+  limit?: number;
+}
+
+interface ErrorStat {
+  errorType: string;
+  count: number;
+  resolvedCount: number;
+  recurrenceCount: number;
+  hasLearning: boolean;
+  relatedLearnings: string[];
+}
+
+interface ErrorStatsOptions {
+  since?: Date;
+  limit?: number;
+}
+
+interface BaselineStats {
+  successRate: number;
+  avgDuration: number;
+  avgTokens: number;
+}
+
 export class InsightsDatabase {
   private db: Database.Database;
   private dataDir: string;
@@ -1437,6 +1488,237 @@ export class InsightsDatabase {
     }
 
     return results;
+  }
+
+  // ============================================================================
+  // Analytics Methods
+  // ============================================================================
+
+  getTrends(options: TrendsOptions = {}): TrendPeriod[] {
+    const since = options.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const until = options.until || new Date();
+    const groupBy = options.groupBy || 'week';
+
+    // Determine strftime format based on groupBy
+    const strftimeFormat = groupBy === 'day' ? '%Y-%m-%d' :
+                           groupBy === 'week' ? '%Y-W%W' :
+                           '%Y-%m';
+
+    const sql = `
+      SELECT
+        strftime('${strftimeFormat}', s.started_at) as period,
+        COUNT(DISTINCT s.id) as sessionCount,
+        SUM(CASE WHEN s.outcome = 'success' THEN 1 ELSE 0 END) as successCount,
+        SUM(CASE WHEN s.outcome = 'failure' THEN 1 ELSE 0 END) as failureCount,
+        COUNT(DISTINCT l.id) as learningCount,
+        COUNT(DISTINCT e.id) as errorCount,
+        SUM(s.token_count) as tokenCount,
+        AVG(
+          CAST((julianday(s.ended_at) - julianday(s.started_at)) * 24 * 60 AS INTEGER)
+        ) as avgSessionDuration
+      FROM sessions s
+      LEFT JOIN learnings l ON l.session_id = s.id
+      LEFT JOIN errors e ON e.session_id = s.id
+      WHERE s.started_at >= ?
+        AND s.started_at <= ?
+      GROUP BY period
+      ORDER BY period ASC
+    `;
+
+    const rows = this.db.prepare(sql).all(since.toISOString(), until.toISOString()) as any[];
+
+    return rows.map(row => ({
+      period: row.period,
+      sessionCount: row.sessionCount || 0,
+      successCount: row.successCount || 0,
+      failureCount: row.failureCount || 0,
+      learningCount: row.learningCount || 0,
+      errorCount: row.errorCount || 0,
+      tokenCount: row.tokenCount || 0,
+      avgSessionDuration: Math.round(row.avgSessionDuration || 0)
+    }));
+  }
+
+  getToolUsageStats(options: ToolUsageOptions = {}): ToolUsageStat[] {
+    const since = options.since;
+    const limit = options.limit || 50;
+    const results: ToolUsageStat[] = [];
+
+    // Helper function to categorize tools
+    const categorizeTool = (toolName: string): string => {
+      if (['read', 'write', 'edit', 'glob'].includes(toolName.toLowerCase())) return 'file_ops';
+      if (['bash', 'bash_tool', 'execute'].includes(toolName.toLowerCase())) return 'execution';
+      if (['view', 'navigate', 'goto'].includes(toolName.toLowerCase())) return 'navigation';
+      if (['task', 'dispatch_agent', 'agent'].includes(toolName.toLowerCase())) return 'agents';
+      if (['grep', 'search', 'find'].includes(toolName.toLowerCase())) return 'search';
+      if (toolName.startsWith('mcp_')) return 'mcp';
+      if (['skill', 'read_skill'].includes(toolName.toLowerCase())) return 'skills';
+      return 'other';
+    };
+
+    // Get tool_calls stats
+    let toolSql = `
+      SELECT
+        tc.tool_name,
+        COUNT(*) as usageCount,
+        COUNT(DISTINCT tc.session_id) as sessionCount,
+        AVG(CASE WHEN s.outcome = 'success' THEN 1.0 ELSE 0.0 END) as successRate
+      FROM tool_calls tc
+      JOIN sessions s ON tc.session_id = s.id
+      WHERE 1=1
+    `;
+
+    const params: any[] = [];
+    if (since) {
+      toolSql += ' AND tc.timestamp >= ?';
+      params.push(since.toISOString());
+    }
+
+    toolSql += `
+      GROUP BY tc.tool_name
+      ORDER BY usageCount DESC
+      LIMIT ?
+    `;
+    params.push(limit);
+
+    const toolRows = this.db.prepare(toolSql).all(...params) as any[];
+
+    for (const row of toolRows) {
+      const category = categorizeTool(row.tool_name);
+      const avgCallsPerSession = row.sessionCount > 0 ? row.usageCount / row.sessionCount : 0;
+
+      results.push({
+        toolName: row.tool_name,
+        category,
+        usageCount: row.usageCount,
+        sessionCount: row.sessionCount,
+        successRate: Math.round((row.successRate || 0) * 100) / 100,
+        avgCallsPerSession: Math.round(avgCallsPerSession * 100) / 100
+      });
+    }
+
+    // Add skills stats
+    let skillSql = `
+      SELECT
+        si.skill_name as tool_name,
+        COUNT(*) as usageCount,
+        COUNT(DISTINCT si.session_id) as sessionCount,
+        AVG(CASE WHEN s.outcome = 'success' THEN 1.0 ELSE 0.0 END) as successRate
+      FROM skill_invocations si
+      JOIN sessions s ON si.session_id = s.id
+      WHERE 1=1
+    `;
+
+    const skillParams: any[] = [];
+    if (since) {
+      skillSql += ' AND si.invoked_at >= ?';
+      skillParams.push(since.toISOString());
+    }
+
+    skillSql += ' GROUP BY si.skill_name';
+
+    const skillRows = this.db.prepare(skillSql).all(...skillParams) as any[];
+
+    for (const row of skillRows) {
+      const avgCallsPerSession = row.sessionCount > 0 ? row.usageCount / row.sessionCount : 0;
+
+      results.push({
+        toolName: `skill:${row.tool_name}`,
+        category: 'skills',
+        usageCount: row.usageCount,
+        sessionCount: row.sessionCount,
+        successRate: Math.round((row.successRate || 0) * 100) / 100,
+        avgCallsPerSession: Math.round(avgCallsPerSession * 100) / 100
+      });
+    }
+
+    // Sort by usage count and return top results
+    return results.sort((a, b) => b.usageCount - a.usageCount).slice(0, limit);
+  }
+
+  getErrorStats(options: ErrorStatsOptions = {}): ErrorStat[] {
+    const since = options.since;
+    const limit = options.limit || 50;
+
+    let sql = `
+      SELECT
+        e.error_type,
+        COUNT(*) as count,
+        SUM(CASE WHEN e.resolved = 1 THEN 1 ELSE 0 END) as resolvedCount,
+        COUNT(DISTINCT e.session_id) as sessionCount
+      FROM errors e
+      JOIN sessions s ON e.session_id = s.id
+      WHERE 1=1
+    `;
+
+    const params: any[] = [];
+    if (since) {
+      sql += ' AND e.timestamp >= ?';
+      params.push(since.toISOString());
+    }
+
+    sql += `
+      GROUP BY e.error_type
+      ORDER BY count DESC
+      LIMIT ?
+    `;
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+
+    return rows.map(row => {
+      // Check for related fix learnings
+      const learnings = this.db.prepare(`
+        SELECT content FROM learnings
+        WHERE type = 'fix'
+          AND (content LIKE ? OR tags LIKE ?)
+        LIMIT 5
+      `).all(`%${row.error_type}%`, `%${row.error_type}%`) as any[];
+
+      const relatedLearnings = learnings.map(l => l.content);
+
+      // Calculate recurrence: sessions with this error type / total sessions with errors
+      const recurrenceCount = row.sessionCount;
+
+      return {
+        errorType: row.error_type,
+        count: row.count,
+        resolvedCount: row.resolvedCount,
+        recurrenceCount,
+        hasLearning: relatedLearnings.length > 0,
+        relatedLearnings
+      };
+    });
+  }
+
+  getBaselineStats(since?: Date): BaselineStats {
+    // Get sessions that DON'T use special features
+    let sql = `
+      SELECT
+        AVG(CASE WHEN s.outcome = 'success' THEN 1.0 ELSE 0.0 END) as successRate,
+        AVG(
+          CAST((julianday(s.ended_at) - julianday(s.started_at)) * 24 * 60 AS INTEGER)
+        ) as avgDuration,
+        AVG(s.token_count) as avgTokens
+      FROM sessions s
+      WHERE s.id NOT IN (SELECT DISTINCT session_id FROM session_modes WHERE used_plan_mode = 1 OR used_thinking = 1 OR used_sub_agents = 1)
+        AND s.id NOT IN (SELECT DISTINCT session_id FROM skill_invocations)
+        AND s.id NOT IN (SELECT DISTINCT session_id FROM sub_agent_invocations)
+    `;
+
+    const params: any[] = [];
+    if (since) {
+      sql += ' AND s.started_at >= ?';
+      params.push(since.toISOString());
+    }
+
+    const row = this.db.prepare(sql).get(...params) as any;
+
+    return {
+      successRate: Math.round((row?.successRate || 0) * 100) / 100,
+      avgDuration: Math.round(row?.avgDuration || 0),
+      avgTokens: Math.round(row?.avgTokens || 0)
+    };
   }
 
   // ============================================================================
