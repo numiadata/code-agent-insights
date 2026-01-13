@@ -610,15 +610,6 @@ Configuration options include:
 ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 ```
 
-## Roadmap
-
-- [x] **Phase 1**: Core + CLI with search, stats, and feature tracking
-- [x] **Phase 2**: MCP server for in-session recall/remember (4 tools: recall, remember, similar_errors, file_history)
-- [x] **Phase 3**: Git integration, project management, and CLAUDE.md sync (3 new commands: projects, sync, correlate)
-- [x] **Phase 3.5**: AI-powered summarization, configuration system, and automation (3 new commands: summarize, config, hooks; enhanced MCP tools)
-- [ ] **Phase 4**: CI/CD outcome tracking
-- [ ] **Phase 5**: Team sync and manager dashboards
-
 ## Contributing
 
 Contributions are welcome! Please read our contributing guidelines and submit pull requests.
