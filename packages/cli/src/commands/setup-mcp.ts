@@ -103,13 +103,200 @@ export const setupMcpCommand = new Command('setup-mcp')
         process.exit(1);
       }
 
-      // 5. Success message
-      console.log(chalk.green('\n✓ MCP server configured successfully!\n'));
+      // 5. Create conventions file
+      const caiDir = path.join(os.homedir(), '.code-agent-insights');
+      if (!fs.existsSync(caiDir)) {
+        fs.mkdirSync(caiDir, { recursive: true });
+      }
+
+      const conventionsPath = path.join(caiDir, 'CONVENTIONS.md');
+      const conventionsContent = `# Code Agent Insights - Conventions & Workflow
+
+## Command Defaults & Conventions
+
+### Sync Command
+- **Default behavior**: Project-only learnings (no global scope)
+- **Always run with --dry-run first** before making changes
+- Use \`--global\` flag explicitly if you want global learnings included
+- Use \`--reviewed-only\` to only sync reviewed learnings
+
+Example:
+\`\`\`bash
+cai sync --dry-run          # Check what will be synced
+cai sync                    # Sync project-only learnings
+cai sync --global           # Include global learnings (rarely needed)
+\`\`\`
+
+### Other Commands
+- **Index**: Use \`--force\` to reindex sessions, otherwise incremental
+- **Clean**: Always use \`--dry-run\` first to preview deletions
+- **Correlate**: Add \`--insights\` for detailed commit correlation analysis
+
+## AI Agent Workflow Checklist
+
+When working with code-agent-insights, follow these steps:
+
+1. **Use recall first** - Before debugging or making changes
+   - Check if similar issues were solved before
+   - Review past learnings related to the task
+
+2. **Check conventions** - Review CONVENTIONS.md or project CLAUDE.md
+   - Understand command defaults
+   - Follow established patterns
+
+3. **Use dry-run** - For any data modification commands
+   - Preview changes before committing
+   - Verify assumptions about what will change
+
+4. **Save learnings** - Document solutions and patterns
+   - Use \`cai learn\` or \`remember\` MCP tool
+   - Tag appropriately (fix, pattern, convention)
+
+## When to Use Recall (MANDATORY)
+
+**ALWAYS use the recall tool before:**
+- Debugging issues (check if solved before)
+- Running sync commands (check conventions)
+- Indexing problems (check past solutions)
+- Database issues (check common fixes)
+- Path normalization issues (recurring pattern)
+- Foreign key constraint errors (documented fixes)
+
+**Example recall queries:**
+- "path normalization issues"
+- "sync command defaults"
+- "database foreign key errors"
+- "indexing sessions problems"
+
+## Common Pitfalls
+
+### 1. Global Learnings Pollution
+- ❌ Running \`cai sync\` without checking scope
+- ✅ Always use \`cai sync --dry-run\` first
+- ✅ Default is project-only (no --global needed)
+
+### 2. Skipping Recall
+- ❌ Debugging from scratch without checking past solutions
+- ✅ Use recall tool before investigating issues
+- ✅ Search for error messages and patterns
+
+### 3. Path Mismatches
+- ❌ Assuming paths are normalized
+- ✅ Check if path inference has been fixed before
+- ✅ Use recall for "path normalization" issues
+
+### 4. Dry-run Habit
+- ❌ Running destructive commands without preview
+- ✅ Always use --dry-run flag first
+- ✅ Verify output before actual execution
+
+## Project Integration
+
+For best results, integrate these conventions into your project:
+
+### Option 1: CLAUDE.md
+Copy this conventions section to your project's CLAUDE.md file.
+
+### Option 2: Claude Code Skill
+Create \`.claude/skills/code-agent-insights/SKILL.md\` in your project with the workflow checklist.
+
+Run \`cai init\` in your project directory to set this up automatically.
+`;
+
+      fs.writeFileSync(conventionsPath, conventionsContent, 'utf-8');
+
+      // 6. Create skill template
+      const templatesDir = path.join(caiDir, 'templates');
+      if (!fs.existsSync(templatesDir)) {
+        fs.mkdirSync(templatesDir, { recursive: true });
+      }
+
+      const skillTemplatePath = path.join(templatesDir, 'SKILL.md');
+      const skillTemplateContent = `# Code Agent Insights Workflow
+
+When working with code-agent-insights tools and commands, follow this workflow:
+
+## 1. Use Recall Before Debugging
+
+**MANDATORY**: Always use the \`recall\` MCP tool before debugging or investigating issues.
+
+Example queries:
+- "path normalization issues"
+- "sync command defaults"
+- "database foreign key errors"
+- "indexing sessions problems"
+
+## 2. Check Conventions Before Commands
+
+Review conventions for command defaults:
+- \`cai sync\`: Defaults to project-only (no --global)
+- Always use \`--dry-run\` first for data modifications
+- Check \`~/.code-agent-insights/CONVENTIONS.md\`
+
+## 3. Use Dry-Run for Data Modifications
+
+Before running commands that modify data:
+\`\`\`bash
+cai sync --dry-run          # Preview changes
+cai clean --dry-run         # Preview deletions
+\`\`\`
+
+## 4. Save Learnings After Solutions
+
+Document solutions using:
+- \`cai learn "description"\` command
+- \`remember\` MCP tool with appropriate type (fix/pattern/convention)
+- Include relevant tags for future recall
+
+## Common Patterns
+
+### Path Issues
+If encountering path mismatches or normalization issues:
+1. Use recall for "path normalization"
+2. Check if similar issue was solved before
+3. Document the fix if new
+
+### Sync Issues
+If global learnings appear in project sync:
+1. Default is project-only (correct)
+2. Only use \`--global\` if explicitly needed
+3. Always \`--dry-run\` first
+
+### Database Errors
+If foreign key or constraint errors occur:
+1. Use recall for "database errors" or "foreign key"
+2. Check deletion order (children before parents)
+3. Use transactions for atomicity
+
+## What NOT to Do
+
+- ❌ Debug without using recall first
+- ❌ Run sync without --dry-run
+- ❌ Assume command defaults without checking
+- ❌ Skip documenting solutions (no learning saved)
+`;
+
+      fs.writeFileSync(skillTemplatePath, skillTemplateContent, 'utf-8');
+
+      // 7. Success message with conventions info
+      console.log(chalk.green('✓ MCP server registered'));
+      console.log(chalk.green(`✓ Conventions file created: ${conventionsPath}`));
+      console.log(chalk.green(`✓ Skill template created: ${skillTemplatePath}\n`));
+
+      console.log(chalk.bold('💡 For best results with Claude Code:\n'));
+      console.log(chalk.dim('   1. Copy CONVENTIONS.md content to your project\'s CLAUDE.md'));
+      console.log(chalk.dim('   2. Or create a skill: .claude/skills/code-agent-insights/SKILL.md'));
+      console.log(chalk.dim('   3. Or run ') + chalk.cyan('cai init') + chalk.dim(' in your project directory\n'));
+
+      console.log(chalk.bold('📚 Key conventions:\n'));
+      console.log(chalk.cyan('   • Always use \'recall\' tool before debugging'));
+      console.log(chalk.cyan('   • Run \'cai sync --dry-run\' before syncing'));
+      console.log(chalk.cyan('   • Default: project-only learnings (no --global)\n'));
+
       console.log(chalk.bold('Next steps:'));
       console.log(chalk.dim('  1. Restart Claude Code'));
-      console.log(chalk.dim('  2. In any session, ask: "What MCP tools do you have available?"'));
-      console.log(chalk.dim('  3. You should see: recall, remember, similar_errors, file_history\n'));
-      console.log(chalk.dim('Run ') + chalk.cyan('cai index') + chalk.dim(' to start indexing your sessions.\n'));
+      console.log(chalk.dim('  2. Run ') + chalk.cyan('cai index') + chalk.dim(' to start indexing sessions'));
+      console.log(chalk.dim('  3. Ask Claude: "What MCP tools do you have available?"\n'));
 
     } catch (error) {
       console.error(chalk.red('✗ Unexpected error:'), error);
