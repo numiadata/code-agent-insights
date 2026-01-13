@@ -263,6 +263,29 @@ cai learn "Auth bugs usually in middleware" -t pattern -s global
 cai learn "Use --break-system-packages for pip" --tags python,pip
 ```
 
+### `cai extract`
+Extract learnings from past sessions using AI
+
+**⚠️ Requires:** `ANTHROPIC_API_KEY` environment variable
+
+```bash
+# Extract from sessions without learnings
+cai extract                          # Process 10 sessions (default)
+cai extract --all                    # Process ALL sessions without learnings
+cai extract --limit 20               # Process up to 20 sessions
+cai extract --since 30d              # Extract from last 30 days
+cai extract --session-id <id>        # Extract from specific session
+cai extract --force --limit 5        # Re-extract from 5 recent sessions
+cai extract --dry-run                # Preview without API calls
+```
+
+**Use cases:**
+- **First-time setup:** Extract learnings from all past sessions with `cai extract --all`
+- **Regular extraction:** Process recent sessions with `cai extract --since 7d`
+- **Selective extraction:** Target specific sessions with `--session-id`
+
+**Note:** For new sessions going forward, enable automatic extraction with hooks (`cai hooks install`).
+
 ### `cai clean`
 Clean up learnings database
 

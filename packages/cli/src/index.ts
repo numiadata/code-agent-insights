@@ -20,6 +20,7 @@ import { effectivenessCommand } from './commands/effectiveness';
 import { errorsReportCommand } from './commands/errors-report';
 import { reportCommand } from './commands/report';
 import { initCommand } from './commands/init';
+import { extractCommand } from './commands/extract';
 
 const program = new Command();
 
@@ -48,5 +49,6 @@ program.addCommand(effectivenessCommand);
 program.addCommand(errorsReportCommand);
 program.addCommand(reportCommand);
 program.addCommand(initCommand);
+program.addCommand(extractCommand);
 
 program.parse();

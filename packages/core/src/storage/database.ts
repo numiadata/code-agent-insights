@@ -1814,6 +1814,32 @@ export class InsightsDatabase {
     return rows.map(row => this.rowToLearning(row));
   }
 
+  getSessionsWithoutLearnings(since?: Date, limit: number = 10): Session[] {
+    // Find sessions that don't have any learnings extracted
+    let sql = `
+      SELECT s.* FROM sessions s
+      WHERE s.id NOT IN (
+        SELECT DISTINCT session_id
+        FROM learnings
+        WHERE session_id IS NOT NULL
+      )
+      AND s.status = 'completed'
+    `;
+
+    const params: any[] = [];
+
+    if (since) {
+      sql += ' AND s.started_at >= ?';
+      params.push(since.toISOString());
+    }
+
+    sql += ' ORDER BY s.started_at DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map(row => this.rowToSession(row));
+  }
+
   // ============================================================================
   // Utility
   // ============================================================================
