@@ -407,6 +407,126 @@ ANTHROPIC_API_KEY=sk-...  # Required for learning extraction and AI summaries
 
 ---
 
+## Command Defaults & Conventions
+
+### `cai sync`
+- **Default:** `--no-global` (project-only learnings)
+- **Rationale:** Avoid polluting project docs with irrelevant global learnings
+- **Override:** Use `--global` only when explicitly needed for all projects
+- **Always:** Run `--dry-run` first to verify scope and changes
+- **Example:**
+  ```bash
+  cai sync --dry-run        # Preview (default: project-only)
+  cai sync                  # Apply project-only learnings
+  cai sync --global         # Include global learnings (rarely needed)
+  ```
+
+### `cai index`
+- **Default:** Incremental (skips already-indexed sessions)
+- **Force mode:** `--force` to reindex all sessions
+- **When to use force:** After parser updates, path fixes, or schema changes
+- **Always:** Use `--verbose` when debugging parse issues
+- **Example:**
+  ```bash
+  cai index                 # Index new sessions only
+  cai index --force         # Reindex all (after fixes)
+  cai index --since 7d      # Only recent sessions
+  ```
+
+### `cai clean`
+- **Always:** Run `--dry-run` first to preview deletions
+- **Be cautious:** Cleaning removes data permanently
+- **Example:**
+  ```bash
+  cai clean --dry-run       # Preview what would be deleted
+  cai clean                 # Apply deletions
+  ```
+
+### Debugging Protocol
+1. **ALWAYS use `recall` tool first** before investigating code
+2. Check past sessions for similar issues
+3. Review learnings in CLAUDE.md conventions
+4. Check git history for related fixes
+5. Only then dive into code investigation
+
+---
+
+## AI Agent Workflow Checklist
+
+Before executing ANY command that modifies data or files, follow this checklist:
+
+### 1. Check Recall First ✓
+- [ ] Run `recall` tool with relevant keywords
+- [ ] Review past learnings and patterns
+- [ ] Check for known issues or conventions
+- [ ] Look for similar error messages or bugs
+
+### 2. Verify Conventions ✓
+- [ ] Check CLAUDE.md "Command Defaults & Conventions" section
+- [ ] Review command defaults and flags
+- [ ] Confirm alignment with previous decisions
+- [ ] Check if behavior changed in recent commits
+
+### 3. Use Dry-Run Mode ✓
+- [ ] Always run with `--dry-run` first (sync, clean)
+- [ ] Review output carefully before applying
+- [ ] Verify scope (global vs project-specific)
+- [ ] Check file paths and counts
+
+### 4. Document Changes ✓
+- [ ] Save new learnings with `remember` tool
+- [ ] Sync to CLAUDE.md when appropriate
+- [ ] Commit with descriptive messages
+- [ ] Update conventions if defaults change
+
+---
+
+## When to Use Recall (MANDATORY)
+
+The `recall` tool contains knowledge from past sessions. **Always use it FIRST** before debugging or running commands.
+
+### Before Debugging Issues
+- **Path/project issues:** `recall path normalization project_path mismatch`
+- **Indexing bugs:** `recall indexing session parser discovery`
+- **Database issues:** `recall database foreign key constraint transaction`
+- **Sync problems:** `recall sync learnings stored CLAUDE.md`
+- **MCP configuration:** `recall mcp setup configuration server tools`
+- **Git correlation:** `recall git commits correlation confidence`
+
+### Before Running Commands
+- **Before `cai sync`:** `recall sync default no-global convention`
+- **Before `cai index --force`:** `recall reindex force foreign key`
+- **Before `cai clean`:** `recall clean database deletion`
+- **Before modifying parsers:** `recall parser session jsonl path`
+
+### Search Patterns That Work
+- Issue keywords + "fix", "pattern", "convention"
+- Command name + "default", "flag", "behavior"
+- Error message fragments (exact text from logs)
+- File/directory names + "path", "normalization"
+
+### Why This Matters
+- We've solved similar issues before
+- Conventions are documented in learnings
+- Avoid re-discovering the same bugs
+- Save significant debugging time
+- Build on past knowledge instead of starting fresh
+
+**Example workflow:**
+```bash
+# User reports: "cai correlate not finding sessions"
+
+# ❌ WRONG: Immediately dive into code
+# grep -r "correlate" packages/
+
+# ✓ CORRECT: Use recall first
+recall correlate sessions project path
+# → Finds: "path normalization" learning from previous session
+# → Saves 30+ minutes of debugging
+```
+
+---
+
 ---
 
 <!-- code-agent-insights:start -->
