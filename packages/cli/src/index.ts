@@ -16,6 +16,7 @@ import { summarizeCommand } from './commands/summarize';
 import { configCommand } from './commands/config';
 import { hooksCommand } from './commands/hooks';
 import { trendsCommand } from './commands/trends';
+import { effectivenessCommand } from './commands/effectiveness';
 
 const program = new Command();
 
@@ -40,5 +41,6 @@ program.addCommand(summarizeCommand);
 program.addCommand(configCommand);
 program.addCommand(hooksCommand);
 program.addCommand(trendsCommand);
+program.addCommand(effectivenessCommand);
 
 program.parse();
