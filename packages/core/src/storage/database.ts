@@ -1780,6 +1780,40 @@ export class InsightsDatabase {
     }));
   }
 
+  getRecentLearnings(since?: Date, limit: number = 20): Learning[] {
+    let sql = `
+      SELECT * FROM learnings
+      WHERE 1=1
+    `;
+
+    const params: any[] = [];
+
+    if (since) {
+      sql += ' AND created_at >= ?';
+      params.push(since.toISOString());
+    }
+
+    // Order by type (fixes first) then by creation date
+    sql += `
+      ORDER BY
+        CASE type
+          WHEN 'fix' THEN 1
+          WHEN 'pattern' THEN 2
+          WHEN 'convention' THEN 3
+          WHEN 'antipattern' THEN 4
+          WHEN 'preference' THEN 5
+          WHEN 'context' THEN 6
+          ELSE 7
+        END,
+        created_at DESC
+      LIMIT ?
+    `;
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map(row => this.rowToLearning(row));
+  }
+
   // ============================================================================
   // Utility
   // ============================================================================

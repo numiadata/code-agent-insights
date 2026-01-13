@@ -18,6 +18,7 @@ import { hooksCommand } from './commands/hooks';
 import { trendsCommand } from './commands/trends';
 import { effectivenessCommand } from './commands/effectiveness';
 import { errorsReportCommand } from './commands/errors-report';
+import { reportCommand } from './commands/report';
 
 const program = new Command();
 
@@ -44,5 +45,6 @@ program.addCommand(hooksCommand);
 program.addCommand(trendsCommand);
 program.addCommand(effectivenessCommand);
 program.addCommand(errorsReportCommand);
+program.addCommand(reportCommand);
 
 program.parse();
